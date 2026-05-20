@@ -46,7 +46,7 @@ npm run dev
 
 When a **customer places an order**, the platform’s job is the **end-to-end fulfillment journey**:
 
-1. Accept the order from the selling channel (OMS).
+1. Accept the order from the selling channel by ensuring inventory exists and route it to closest warehouse to keep shipping costs low (OMS).
 2. Confirm finance can support the shipment (SAP).
 3. Release work to the warehouse (Manhattan WMS).
 4. Run floor and robot tasks at the building (Edge — on-prem).
