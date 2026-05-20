@@ -10,6 +10,7 @@ import { correlationMiddleware } from "./shared/correlation.js";
 import { logger } from "./shared/logger.js";
 import { tenantMiddleware } from "./shared/tenant.js";
 import { warehouseRouter } from "./warehouse-tasks/routes.js";
+import { renderDevPortal } from "./dev-portal.js";
 
 // Bootstrap async catalog subscribers at module load
 void defaultCatalogSubscriber;
@@ -33,6 +34,7 @@ export function createApp(): Express {
     next();
   });
 
+  app.get("/", renderDevPortal);
   app.get("/health/live", (_req, res) => res.json({ status: "live" }));
   app.get("/health/ready", (_req, res) => {
     res.json({ status: "ready", subscribers: "catalog,execution,inventory" });
