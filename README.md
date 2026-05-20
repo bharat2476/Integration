@@ -8,9 +8,156 @@ Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/In
 
 ---
 
+## Integration topology: Global vs Edge
+
+OmniRoute-Core ships as **two integration components**. They share contracts (`x-tenant-id`, `x-correlation-id`, pub/sub topics) but differ in **deployment footprint**, **latency targets**, and **automation scope**.
+
+| Component | Deployment | Scope | Primary systems | Repository focus |
+|-----------|------------|-------|-----------------|------------------|
+| **Global** | Multi-region **cloud** (AWS EKS) | All ecosystems on the **same WMS** (e.g. Manhattan) | OMS, PIM, SAP, Manhattan, Blue Yonder TMS, shared catalog & order orchestration | `1-iaas-infra/`, `2-paas-platform/`, SaaS domains: `catalog/`, `execution/`, `inventory/` |
+| **Edge** | **On-prem** per warehouse | One facility; **site-specific WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta) | Floor automation, pick/pack/ship, labels, AMR missions | SaaS domain: `warehouse-tasks/` + local Edge gateway cache |
+
+**Why split Global and Edge?**
+
+- **Global** amortizes integration cost: one PIM broker, one order pipeline, and one SAP close-loop serve every tenant and brand on a shared Manhattan estate.
+- **Edge** stays on-prem to meet **tight SLOs** (sub-second robotics handshakes) and avoid cloud round-trips for scanners, AMRs, and pack lines.
+- Each warehouse can run a **different automation vendor** without changing Global configs—only Edge Helm values / env profiles change.
+
+```mermaid
+flowchart TB
+  subgraph regions [Multi-region Global — disruption isolation]
+    R1[Region US-East\nEKS + RDS replica]
+    R2[Region US-West\nEKS + RDS replica]
+    R3[Region EU-Central\nEKS + RDS replica]
+  end
+
+  subgraph global [Global integration — cloud shared services]
+    GAPI[OmniRoute Global API\nexecution · catalog · inventory]
+    GPS[Shared Pub/Sub\npim.catalog.delta · order.execution.stage]
+    GRDS[(Shared PostgreSQL\nRLS + tenant schemas)]
+    GW_GLOBAL[Istio + tenant rate limit\n2-paas-platform]
+  end
+
+  subgraph shared [Shared resources — cost control]
+    EKS_SH[Shared EKS cluster per region\nterraform/eks.tf]
+    KARP[Karpenter spot + on-demand\nnodepool-workloads.yaml]
+    OTEL_SH[Shared OTel DaemonSet\n→ Splunk]
+    HELM_SH[One Helm chart — HPA scale-to-zero friendly]
+  end
+
+  OMS & PIM & SAP & MHT_CLOUD[Manhattan central] & TMS --> GW_GLOBAL
+  GW_GLOBAL --> GAPI
+  GAPI --> GPS --> GRDS
+  regions --> global
+  shared --> global
+
+  subgraph edge_wh1 [Edge — Warehouse A on-prem]
+    E1[Edge API / agent\nwarehouse-tasks]
+    WES1[Locus AMR]
+    E1 --> WES1
+  end
+
+  subgraph edge_wh2 [Edge — Warehouse B on-prem]
+    E2[Edge API / agent\nwarehouse-tasks]
+    WES2[AutoStore shuttle]
+    E2 --> WES2
+  end
+
+  GAPI <-->|Async catalog + order stages| E1 & E2
+  MHT_CLOUD <-->|Waves / inventory| E1 & E2
+  E1 & E2 -->|auto-pick · auto-pack · labels| Floor1[Floor systems]
+```
+
+---
+
+## Shared resources and cost efficiency
+
+Platform engineering **consolidates infrastructure** so tenants and brands share pools instead of provisioning duplicate clusters per integration.
+
+| Shared resource | How cost stays low | Config artifact |
+|-----------------|-------------------|-----------------|
+| **EKS cluster** | One regional control plane; many workloads per cluster | `1-iaas-infra/terraform/eks.tf` |
+| **Karpenter NodePools** | Mix **spot** + on-demand; scale nodes to zero when queues drain | `2-paas-platform/karpenter/nodepool-workloads.yaml` |
+| **Helm release** | Single `omniroute-api` chart for all tenants; reuse image + PDB | `2-paas-platform/helm/omniroute-api/` |
+| **PostgreSQL** | One RDS instance; **RLS + schemas** replace per-tenant databases | `terraform/rds.tf`, `sql/tenant_rls_bootstrap.sql` |
+| **Observability** | Shared OTel collectors → Splunk (no per-warehouse Splunk index sprawl) | `otel/daemonset-collector.yaml`, `splunk/dashboard-*.json` |
+| **CI/CD** | One pipeline validates all pillars before any deploy | `.github/workflows/deploy.yml`, `Jenkinsfile` |
+| **Global API** | Catalog and order logic written once; Edge only runs thin floor adapters | `3-saas-application/src/` |
+
+**Noisy-neighbor protection without duplicate hardware:** Istio enforces per-tenant rate limits on the shared gateway (`envoyfilter-tenant-ratelimit.yaml`), so one tenant’s peak does not require a dedicated cluster.
+
+---
+
+## Multi-region placement (avoid disruption)
+
+Infrastructure is **replicated across regions** so an AZ or regional outage does not halt the full supply chain network.
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Regional isolation** | Separate VPC + EKS + RDS per region (`terraform/vpc.tf`, `variables.tf` `aws_region`) |
+| **Multi-AZ inside region** | Private, database, and NAT subnets span 3 AZs (`availability_zones`) |
+| **Global traffic** | Corporate OMS/PIM/SAP connect to the **nearest healthy region**; Global API remains active in surviving regions |
+| **Edge unaffected by cloud region loss** | On-prem Edge keeps pick/pack/ship running; syncs catalog/order state when Global is reachable |
+| **Data** | PostgreSQL with multi-AZ in prod; cross-region read replicas (extend `rds.tf` per DR playbook) |
+
+```mermaid
+flowchart LR
+  subgraph US_East [us-east-1]
+    EKS1[EKS Global]
+    RDS1[(RDS primary)]
+  end
+  subgraph US_West [us-west-2]
+    EKS2[EKS Global]
+    RDS2[(RDS replica)]
+  end
+  subgraph EU [eu-central-1]
+    EKS3[EKS Global]
+    RDS3[(RDS replica)]
+  end
+
+  OMS_G[Corporate OMS] -->|route nearest| EKS1 & EKS2 & EKS3
+  RDS1 -.->|async replication| RDS2 & RDS3
+
+  WH_EAST[Edge WH East on-prem] --> EKS1
+  WH_WEST[Edge WH West on-prem] --> EKS2
+```
+
+Engineers parameterize region in Terraform (`var.aws_region`, `var.environment`) and Helm (`values.yaml` per region)—no forked application code.
+
+---
+
+## Engineer-driven scalability (config, not heroics)
+
+Scale and resilience come from **versioned configs** checked into this repo. Operations change limits; they do not hand-edit production servers.
+
+| Knob | What engineers tune | Effect |
+|------|---------------------|--------|
+| `eks_managed_node_desired_size` | Baseline node count | Steady-state capacity |
+| Karpenter `limits.cpu` / `memory` | Burst ceiling | Black Friday / catalog flood headroom |
+| Helm `autoscaling.maxReplicas` | API pod ceiling | Order API throughput |
+| Helm `queueDepthMetric.targetAverageValue` | HPA on pub/sub backlog | Scale before queue latency grows |
+| Istio token bucket | Per-tenant `max_tokens` | Fair sharing on shared gateway |
+| `tenant_schema_count` + RLS | DB isolation model | Tenant growth without new RDS |
+| Canary `weight` in `deploy.yml` | Release risk | Safe rollout with auto-rollback |
+
+```mermaid
+flowchart LR
+  ENG[Platform engineer] --> TF[Terraform vars\n1-iaas-infra]
+  ENG --> HELM[Helm values\n2-paas-platform]
+  ENG --> APP[Env + HPA metrics\n3-saas-application]
+  TF --> AWS[AWS EKS / RDS / VPC]
+  HELM --> K8S[Kubernetes workloads]
+  APP --> K8S
+  METRICS[Splunk / OTel SLOs] -->|feedback| ENG
+```
+
+Peak example: PIM publishes millions of SKUs → `omniroute_pubsub_backlog_depth` rises → HPA adds API pods → Karpenter adds spot nodes → backlog drains → scale down after `scaleDown.stabilizationWindowSeconds` (see `helm/omniroute-api/values.yaml`).
+
+---
+
 ## Architecture diagram (three pillars + artifacts)
 
-End-to-end platform view: corporate traffic enters the PaaS edge, workloads run on IaaS, business logic lives in SaaS domains. Every box lists the **repository artifacts** that implement it.
+End-to-end platform view: corporate traffic enters the **cloud PaaS gateway** (Global), workloads run on multi-region IaaS, business logic lives in SaaS domains. **On-prem Edge** warehouses (not shown below) run `warehouse-tasks/` only—see [Global vs Edge](#integration-topology-global-vs-edge). Every box lists **repository artifacts**.
 
 ```mermaid
 flowchart TB
@@ -23,7 +170,7 @@ flowchart TB
     TMS[Blue Yonder TMS\nFreight / carriers]
   end
 
-  subgraph edge [2-paas-platform — Edge and runtime]
+  subgraph paas [2-paas-platform — Cloud gateway and runtime]
     GW["Istio / Envoy\nenvoyfilter-tenant-ratelimit.yaml\nx-tenant-id + rate limit"]
     HELM["Helm omniroute-api\nhelm/omniroute-api/*\nHPA + PDB + Deployment"]
     OTEL["OTel DaemonSet\notel/daemonset-collector.yaml"]
@@ -287,11 +434,17 @@ flowchart LR
 
 ### Engineering & Platform
 
+- **Global vs Edge:** Global cloud handles OMS/PIM/SAP/Manhattan/TMS orchestration for every ecosystem on one WMS; **Edge on-prem** handles site-specific WES vendors with millisecond-scale floor latency (see [Integration topology: Global vs Edge](#integration-topology-global-vs-edge)).
+- **Shared resources** (one EKS, one RDS with RLS, shared OTel/Splunk, Karpenter spot pools) keep marginal tenant cost low—see [Shared resources and cost efficiency](#shared-resources-and-cost-efficiency).
+- **Multi-region** Terraform/Helm parameters isolate blast radius; surviving regions continue Global processing while Edge warehouses operate autonomously until sync resumes.
 - **Pub/Sub decoupling** (`3-saas-application/src/pubsub/`) isolates PIM catalog floods from order pipelines — critical for **Black Friday** spikes when SKU deltas arrive in millions.
 - **Karpenter + HPA** scale on CPU *and* `omniroute_pubsub_backlog_depth` (see [`2-paas-platform/helm/omniroute-api/values.yaml`](2-paas-platform/helm/omniroute-api/values.yaml)).
 - **Canary + automated rollback** in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) and [`Jenkinsfile`](Jenkinsfile) when post-deploy P99 latency or error rate breaches SLO.
 
 ### Operations
+
+- **Global** operators monitor Splunk dashboards for tenant latency and WES error rates across the shared Manhattan estate.
+- **Edge** operators interact only with floor endpoints below; robotics traffic never leaves the warehouse LAN.
 
 | Endpoint | Physical / automation action |
 |----------|------------------------------|
