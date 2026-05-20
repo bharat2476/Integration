@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+
+# Build / cache
+.next/
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
