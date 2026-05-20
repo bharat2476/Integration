@@ -38,7 +38,6 @@ flowchart LR
 | Page | URL |
 |------|-----|
 | **Product Guide** (start here) | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
-| Overview (API console) | [http://localhost:8080/](http://localhost:8080/) → redirects to Product Guide |
 | Order execution | [http://localhost:8080/ui/orders](http://localhost:8080/ui/orders) |
 | PIM catalog | [http://localhost:8080/ui/catalog](http://localhost:8080/ui/catalog) |
 | Warehouse tasks | [http://localhost:8080/ui/warehouse](http://localhost:8080/ui/warehouse) |
