@@ -6,6 +6,7 @@ import { ValidationError } from "../shared/errors.js";
 
 const startSchema = z.object({
   omsOrderRef: z.string().min(1),
+  shipUrgency: z.enum(["rush", "standard"]).default("standard"),
   wesVendor: z.enum(["AutoStore", "Vanderlande", "Locus", "Schaefer", "Rapyuta"]).optional(),
 });
 
@@ -22,9 +23,10 @@ executionRouter.post("/orders", async (req, res, next) => {
       ctx.tenantId,
       ctx.correlationId,
       parsed.data.omsOrderRef,
+      parsed.data.shipUrgency,
       parsed.data.wesVendor,
     );
-    res.status(202).json({ ...result, correlationId: ctx.correlationId });
+    res.status(202).json(result);
   } catch (err) {
     next(err);
   }
@@ -41,5 +43,10 @@ executionRouter.get("/orders/:orderId", (req, res) => {
     state: record.state,
     correlationId: record.ctx.correlationId,
     tenantId: record.ctx.tenantId,
+    shipUrgency: record.ctx.shipUrgency,
+    priorityScore: record.ctx.priorityScore,
+    promisedShipBy: record.ctx.promisedShipBy,
+    slaTargetHours: record.sla.slaTargetHours,
+    waveTier: record.sla.waveTier,
   });
 });

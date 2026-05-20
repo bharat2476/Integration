@@ -16,9 +16,16 @@ Port **8080**. Required header: `x-tenant-id`.
 
 ```bash
 cd 3-saas-application && npm run build
+cd 3-saas-application && npm run test:tenant
 cd 1-iaas-infra/terraform && terraform init -backend=false && terraform validate
 helm lint 2-paas-platform/helm/omniroute-api
 ```
+
+## CI/CD
+
+- `.github/workflows/deploy.yml` — PR + `main`: lint, Terraform, Helm, **Docker build**, Trivy, **multi-tenant smoke**, **`all-checks` merge gate**
+- Docker image push and deploy only on **`main`**
+- `npm run test:tenant` locally mirrors CI multi-tenant checks
 
 ## Known blueprint notes
 

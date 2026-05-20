@@ -19,10 +19,15 @@ export interface TenantContext {
   correlationId: string;
 }
 
+export type ShipUrgency = "rush" | "standard";
+
 export interface OrderExecutionContext extends TenantContext {
   orderId: string;
   omsOrderRef: string;
   wesVendor?: WesVendor;
+  shipUrgency: ShipUrgency;
+  priorityScore: number;
+  promisedShipBy: string;
 }
 
 export type OsdAdjustmentType = "overage" | "shortage" | "damage";

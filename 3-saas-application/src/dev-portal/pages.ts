@@ -47,12 +47,19 @@ const PAGES: Record<string, () => string> = {
     renderShell(
       "orders",
       "Order execution",
-      "Async pipeline: OMS → SAP pledge → Manhattan wave → WES → Blue Yonder TMS → SAP close. Uses correlation ID on every stage.",
+      "End-to-end customer order flow with rush vs standard priority. Each stage logs correlation ID, SLA, and wave tier.",
       `
     <section>
       <h2>Start pipeline</h2>
+      <p class="sub" style="margin-top:0">Rush orders get higher priority score, RUSH WMS wave, and expedited freight.</p>
       <div class="grid2">
         <label>OMS order ref <input id="omsRef" value="OMS-10042" /></label>
+        <label>Ship urgency
+          <select id="shipUrgency">
+            <option value="rush">Rush / urgent (~24h SLA)</option>
+            <option value="standard" selected>Standard / non-rush (~5 day SLA)</option>
+          </select>
+        </label>
         <label>WES vendor
           <select id="wesVendor">
             <option value="Locus">Locus</option>
@@ -74,6 +81,7 @@ const PAGES: Record<string, () => string> = {
       document.getElementById("btnStartOrder").onclick = () => {
         const body = JSON.stringify({
           omsOrderRef: document.getElementById("omsRef").value,
+          shipUrgency: document.getElementById("shipUrgency").value,
           wesVendor: document.getElementById("wesVendor").value
         });
         runApi("POST", "/api/v1/execution/orders", body);

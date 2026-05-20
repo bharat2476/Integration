@@ -17,6 +17,10 @@ export const GUIDE_EXTRA_STYLES = `
   ul.plain { margin: 0.5rem 0 0 1.1rem; padding: 0; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+  .timeline { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.5rem; }
+  .timeline th, .timeline td { border: 1px solid #2a3a52; padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+  .timeline th { background: #0a0e14; color: #7eb8ff; }
+  .rush { color: #fbbf24; font-weight: 600; }
 `;
 
 export function productGuideBody(): string {
@@ -31,20 +35,102 @@ export function productGuideBody(): string {
     </div>
 
     <section>
-      <h2>What is the objective?</h2>
-      <p><strong>Main goal:</strong> Move orders and product data safely across many systems while keeping costs down, meeting warehouse speed targets, and leaving a clear audit trail for Finance and Legal.</p>
-      <p>The platform answers three questions for the business:</p>
-      <ol class="plain">
-        <li><strong>Is the order financially and operationally ready?</strong> — SAP, WMS, robotics, and shipping aligned.</li>
-        <li><strong>Is our product information correct everywhere?</strong> — PIM updates reach every warehouse without halting orders.</li>
-        <li><strong>Do our books match the building?</strong> — Inventory counts, shortages, and damage are recorded with proper reason codes.</li>
-      </ol>
+      <h2>Main objective — from customer order to on-time delivery</h2>
+      <p>
+        When a <strong>customer places an order</strong>, many systems must work in sequence — often at the same time — without
+        anyone re-typing data. OmniRoute-Core’s primary job is that <strong>end-to-end fulfillment journey</strong>:
+        confirm the sale, allocate inventory, run the warehouse and robots, book freight, and close finance —
+        while hitting the <strong>delivery promise</strong> shown at checkout.
+      </p>
+      <p><strong>Rush / urgent orders</strong> jump ahead of <strong>standard (non-rush)</strong> orders in the warehouse queue,
+        use faster carrier service, and carry a shorter SLA clock. Standard orders still complete reliably; they simply
+        yield capacity when rush volume spikes.</p>
+      <table class="timeline">
+        <thead>
+          <tr><th>Priority</th><th>Typical promise (demo)</th><th>Behind the scenes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rush">Rush / urgent</td>
+            <td>~24 hour ship target</td>
+            <td>Higher priority score · RUSH wave in Manhattan · expedited TMS · robots tasked first at Edge</td>
+          </tr>
+          <tr>
+            <td>Standard / non-rush</td>
+            <td>~5 day ship target</td>
+            <td>Standard wave tier · ground freight · fills gaps between rush waves</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="sub" style="margin-top:0.75rem">Try both: <a href="/ui/orders">Order execution UI</a> → choose <strong>rush</strong> vs <strong>standard</strong> and compare the response.</p>
+    </section>
+
+    <section>
+      <h2>End-to-end flow — what happens after the customer checks out</h2>
+      <pre class="flow">① Customer places order (website / store → OMS)
+② GCP translates to Nike in-house protocols + stores JSON (MongoDB) + facts (SQL)
+③ Global: SAP financial pledge — "we can afford to ship this"
+④ Global: Manhattan WMS — wave released (RUSH queue vs STANDARD queue)
+⑤ Edge (on-prem): pick · pack · robots · label — milliseconds matter here
+⑥ Global: Blue Yonder TMS — carrier + service level (express vs ground)
+⑦ Edge: ship confirm — carton leaves the building
+⑧ Global: SAP close — revenue & inventory books align
+⑨ Customer tracking + ops dashboards — Splunk latency per tenant</pre>
+
+      <table class="timeline">
+        <thead>
+          <tr><th>Step</th><th>System</th><th>What the customer experiences</th><th>Complexity handled for you</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>OMS</td><td>Order confirmation email</td><td>Captures rush vs standard shipping choice</td></tr>
+          <tr><td>2</td><td>GCP + Nike services</td><td>—</td><td>Protocol translation; no manual re-entry between brands</td></tr>
+          <tr><td>3</td><td>SAP</td><td>—</td><td>Credit / allocation pledge before pick starts</td></tr>
+          <tr><td>4</td><td>Manhattan WMS</td><td>—</td><td>Priority waves; urgent orders skip ahead of backlog</td></tr>
+          <tr><td>5</td><td>WES (Edge)</td><td>—</td><td>AutoStore, Locus, Rapyuta, etc. per building</td></tr>
+          <tr><td>6</td><td>Blue Yonder TMS</td><td>Tracking number</td><td>Express vs ground tied to urgency</td></tr>
+          <tr><td>7</td><td>Edge ship</td><td>"Shipped" notification</td><td>Label (ZPL/PDF) + trailer load</td></tr>
+          <tr><td>8</td><td>SAP close</td><td>—</td><td>Financial loop complete; audit trail for Finance</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>Why so many systems?</strong> Each owns one job well — money (SAP), physical inventory (WMS),
+        robots (WES), trucks (TMS). OmniRoute-Core orchestrates them so a delay in one step is visible immediately
+        (same <strong>correlation ID</strong> in every log) and rush orders do not wait behind a slow standard wave.
+      </p>
+    </section>
+
+    <section>
+      <h2>How engineers ship safely (CI/CD)</h2>
+      <p>
+        Many engineers can work at the same time because <strong>every change is checked before it lands on <code>main</code></strong>.
+        Bad code is stopped in the pipeline — not in production.
+      </p>
+      <table class="timeline">
+        <thead>
+          <tr><th>Check</th><th>Why it matters</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Docker image build</td><td>Proves the app packages correctly in a container (same as production)</td></tr>
+          <tr><td>Security scan (Trivy)</td><td>Blocks critical vulnerabilities in the image</td></tr>
+          <tr><td>Multi-tenant tests</td><td>API must reject calls without <code>x-tenant-id</code>; tenants stay isolated</td></tr>
+          <tr><td>Lint + Terraform + Helm</td><td>Infrastructure and Kubernetes configs validated before merge</td></tr>
+          <tr><td>CI gate job</td><td>All checks must pass — merge to <code>main</code> is blocked if anything fails</td></tr>
+        </tbody>
+      </table>
+      <p>Only after merge to <code>main</code> is the Docker image published and deployed (canary → health check → full rollout or automatic rollback).</p>
+      <p class="sub">Details: <a href="https://github.com/bharat2476/Integration/blob/main/README.md#cicd--docker-images-multi-tenant-gates-and-safe-merges-to-main" target="_blank" rel="noopener">README CI/CD section</a></p>
+    </section>
+
+    <section>
+      <h2>How integrations stay reliable at scale</h2>
       <div class="outcomes">
-        <div class="outcome"><strong>Faster fulfillment</strong><span>One order path, fewer manual handoffs</span></div>
-        <div class="outcome"><strong>Lower infra cost</strong><span>Shared cloud + on-prem Edge only where needed</span></div>
-        <div class="outcome"><strong>Resilience</strong><span>Multi-region cloud; floor keeps working if a region blips</span></div>
-        <div class="outcome"><strong>Compliance</strong><span>OS&amp;D audits and correlation IDs on every step</span></div>
+        <div class="outcome"><strong>On-time delivery</strong><span>SLA clock + priority score per order</span></div>
+        <div class="outcome"><strong>Async catalog</strong><span>PIM updates never block picking</span></div>
+        <div class="outcome"><strong>Multi-region cloud</strong><span>Global keeps running if one region fails</span></div>
+        <div class="outcome"><strong>Edge on-prem</strong><span>Floor speed for robotics SLOs</span></div>
       </div>
+      <p>Shared cloud resources (one API, one message bus, pooled databases) keep cost down while
+        <strong>per-tenant rate limits</strong> stop one brand’s peak from starving another.</p>
     </section>
 
     <section>
@@ -124,12 +210,12 @@ export function productGuideBody(): string {
         </div>
       </details>
 
-      <details>
+      <details open>
         <summary>Step 3 — Run an order (OMS → finance → warehouse → ship)</summary>
         <div class="inner">
-          <p><strong>What you do:</strong> Start an order with an OMS reference and pick a robotics vendor (e.g. Locus).</p>
-          <p><strong>What it represents:</strong> A customer order flowing through financial pledge, warehouse wave, robot allocation, freight rating, and SAP close.</p>
-          <p><strong>Try it:</strong> <a href="/ui/orders">Open Order execution UI</a> → Start pipeline → copy Order ID → Lookup state.</p>
+          <p><strong>What you do:</strong> Start an order with OMS reference, <strong>rush or standard</strong> urgency, and a robotics vendor (e.g. Locus).</p>
+          <p><strong>What it represents:</strong> The full customer journey — pledge, priority wave, robots, freight class, ship, SAP close — with <code>promisedShipBy</code> in the API response.</p>
+          <p><strong>Try it:</strong> <a href="/ui/orders">Open Order execution UI</a> → run rush, then standard → compare priority and SLA fields.</p>
         </div>
       </details>
 

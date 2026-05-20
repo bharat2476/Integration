@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --ext .ts",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:tenant": "npm run build && node scripts/ci-tenant-smoke.mjs"
   },
   "engines": {
     "node": ">=20"

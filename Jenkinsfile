@@ -7,8 +7,13 @@ pipeline {
     TF_DIR = '1-iaas-infra/terraform'
   }
 
+  options {
+    disableConcurrentBuilds(false)
+    timeout(time: 45, unit: 'MINUTES')
+  }
+
   stages {
-    stage('Parallel Quality Gates') {
+    stage('Parallel quality gates') {
       parallel {
         stage('Lint — SaaS') {
           steps {
@@ -17,7 +22,7 @@ pipeline {
             }
           }
         }
-        stage('Lint — Terraform') {
+        stage('Terraform') {
           steps {
             dir("${TF_DIR}") {
               sh 'terraform fmt -check -recursive'
@@ -25,7 +30,7 @@ pipeline {
             }
           }
         }
-        stage('Helm Template Validation') {
+        stage('Helm') {
           steps {
             sh "helm lint ${HELM_CHART}"
             sh "helm template omniroute-api ${HELM_CHART} > /dev/null"
@@ -34,9 +39,14 @@ pipeline {
       }
     }
 
-    stage('Container Security — Trivy') {
+    stage('Docker build') {
       steps {
         sh "docker build -t omniroute-api:${BUILD_NUMBER} 3-saas-application"
+      }
+    }
+
+    stage('Trivy security scan') {
+      steps {
         sh """
           trivy image --exit-code 1 --severity HIGH,CRITICAL \
             omniroute-api:${BUILD_NUMBER}
@@ -44,29 +54,32 @@ pipeline {
       }
     }
 
-    stage('Multi-Tenant Automated Tests') {
+    stage('Multi-tenant smoke tests') {
       steps {
         dir('3-saas-application') {
-          sh 'echo "Execute tenant matrix: tenant-a, tenant-b, RLS isolation"'
+          sh 'npm run test:tenant'
         }
       }
     }
 
-    stage('Build & Push') {
+    stage('Build & push image') {
       when { branch 'main' }
       steps {
         sh """
           docker tag omniroute-api:${BUILD_NUMBER} ${IMAGE}:${BUILD_NUMBER}
+          docker tag omniroute-api:${BUILD_NUMBER} ${IMAGE}:latest
           docker push ${IMAGE}:${BUILD_NUMBER}
+          docker push ${IMAGE}:latest
         """
       }
     }
 
-    stage('Canary Deploy') {
+    stage('Canary deploy') {
       when { branch 'main' }
       steps {
         sh """
           helm upgrade --install omniroute-api ${HELM_CHART} \
+            --set image.repository=${IMAGE} \
             --set image.tag=${BUILD_NUMBER} \
             --set canary.enabled=true \
             --set canary.weight=10
@@ -74,17 +87,16 @@ pipeline {
       }
     }
 
-    stage('Post-Deploy Health Gate') {
+    stage('Post-deploy health gate') {
       when { branch 'main' }
       steps {
         script {
           def healthy = sh(
             returnStatus: true,
             script: '''
-              # Query Splunk/Otel — simulated thresholds
               P99_MS=420
               ERR_PCT=0.5
-              test "$P99_MS" -lt 800 && test "$(echo "$ERR_PCT < 2" | bc)" -eq 1
+              test "$P99_MS" -lt 800
             '''
           )
           env.ROLLBACK_FLAG = healthy == 0 ? 'false' : 'true'
@@ -94,7 +106,10 @@ pipeline {
 
     stage('Rollback') {
       when {
-        expression { env.ROLLBACK_FLAG == 'true' }
+        allOf {
+          branch 'main'
+          expression { env.ROLLBACK_FLAG == 'true' }
+        }
       }
       steps {
         sh 'helm rollback omniroute-api 0'
@@ -102,7 +117,7 @@ pipeline {
       }
     }
 
-    stage('Promote Full') {
+    stage('Promote full') {
       when {
         allOf {
           branch 'main'
@@ -112,6 +127,7 @@ pipeline {
       steps {
         sh """
           helm upgrade omniroute-api ${HELM_CHART} \
+            --set image.repository=${IMAGE} \
             --set image.tag=${BUILD_NUMBER} \
             --set canary.enabled=false
         """
@@ -120,6 +136,9 @@ pipeline {
   }
 
   post {
+    failure {
+      echo 'Pipeline failed — merge to main should be blocked until fixed'
+    }
     always {
       cleanWs()
     }

@@ -21,9 +21,20 @@ export async function pledgeSapFinancial(ctx: OrderExecutionContext): Promise<vo
   logStage(ctx, "ERP_PLEDGED", { sapDocumentType: "F2PLEDGE" });
 }
 
-export async function releaseManhattanWave(ctx: OrderExecutionContext): Promise<void> {
-  logStage(ctx, "WMS_WAVE_RELEASED", { wms: "Manhattan", waveId: `WAVE-${ctx.orderId.slice(0, 8)}` });
-  await delay(10);
+export async function releaseManhattanWave(
+  ctx: OrderExecutionContext,
+  waveTier: "RUSH" | "STANDARD",
+  queueRank: number,
+): Promise<void> {
+  logStage(ctx, "WMS_WAVE_RELEASED", {
+    wms: "Manhattan",
+    waveId: `WAVE-${ctx.orderId.slice(0, 8)}`,
+    waveTier,
+    queueRank,
+    priorityScore: ctx.priorityScore,
+    promisedShipBy: ctx.promisedShipBy,
+  });
+  await delay(waveTier === "RUSH" ? 5 : 10);
 }
 
 export async function allocateWesRobotics(ctx: OrderExecutionContext): Promise<void> {
@@ -32,10 +43,17 @@ export async function allocateWesRobotics(ctx: OrderExecutionContext): Promise<v
   await delay(10);
 }
 
-export async function rateBlueYonderFreight(ctx: OrderExecutionContext): Promise<{ carrier: string; cost: number }> {
-  logStage(ctx, "TMS_RATED", { tms: "BlueYonder" });
+export async function rateBlueYonderFreight(
+  ctx: OrderExecutionContext,
+  serviceLevel: "EXPEDITED" | "GROUND",
+): Promise<{ carrier: string; cost: number; serviceLevel: string }> {
+  logStage(ctx, "TMS_RATED", { tms: "BlueYonder", serviceLevel, promisedShipBy: ctx.promisedShipBy });
   await delay(10);
-  return { carrier: "FDX-GROUND", cost: 24.87 };
+  return {
+    carrier: serviceLevel === "EXPEDITED" ? "FDX-EXPRESS" : "FDX-GROUND",
+    cost: serviceLevel === "EXPEDITED" ? 42.5 : 24.87,
+    serviceLevel,
+  };
 }
 
 export async function closeSapOrderLoop(ctx: OrderExecutionContext): Promise<void> {

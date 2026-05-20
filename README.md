@@ -10,6 +10,31 @@ Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/In
 
 Open the **Product Guide** first — plain-language overview, step-by-step walkthrough, and links to every demo screen: [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide)
 
+### Main objective — customer order to on-time delivery
+
+After a **customer places an order**, OmniRoute-Core orchestrates the **end-to-end fulfillment path** across OMS, GCP (Nike in-house protocols), SAP, Manhattan WMS, on-prem WES, and Blue Yonder TMS — so the order ships within the **promised timeline**.
+
+| Urgency | Demo SLA | Behind the scenes |
+|---------|----------|-------------------|
+| **Rush / urgent** | ~24h ship target | Higher `priorityScore`, **RUSH** Manhattan wave, expedited TMS, Edge robotics prioritized |
+| **Standard / non-rush** | ~5 day ship target | Standard wave tier, ground freight, fills capacity between rush peaks |
+
+API: `POST /api/v1/execution/orders` with `"shipUrgency": "rush"` or `"standard"`. Response includes `promisedShipBy`, `waveTier`, and `priorityScore`.
+
+```mermaid
+flowchart LR
+  C[Customer checkout] --> OMS[OMS]
+  OMS --> GCP[GCP translate]
+  GCP --> SAP[SAP pledge]
+  SAP --> MHT[Manhattan wave\nRUSH vs STANDARD]
+  MHT --> EDGE[Edge pick pack ship]
+  EDGE --> TMS[TMS rate]
+  TMS --> SAP2[SAP close]
+  SAP2 --> C2[Customer shipped]
+```
+
+---
+
 | Page | URL |
 |------|-----|
 | **Product Guide** (start here) | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
@@ -486,30 +511,67 @@ flowchart TB
 
 ---
 
-## CI/CD and deployment workflow (artifacts)
+## CI/CD — Docker images, multi-tenant gates, and safe merges to `main`
+
+Multiple engineers work in parallel on feature branches. **Wrong code must not reach `main`** — every pull request runs the same checks; only green builds merge. **`main`** alone builds/pushes the **Docker image** and deploys.
 
 ```mermaid
-flowchart LR
-  subgraph parallel [Parallel gates — deploy.yml / Jenkinsfile]
-    L[Lint SaaS\nnpm run build]
-    TF[Terraform fmt/validate\n1-iaas-infra/terraform]
-    H[Helm lint + template\n2-paas-platform/helm]
-    TV[Trivy scan\n3-saas-application/Dockerfile]
-    MT[Multi-tenant tests]
+flowchart TB
+  subgraph pr [Pull request / feature branch]
+    DEV[Engineer pushes branch]
+    DEV --> PAR[Parallel checks]
+    PAR --> L[Lint + TypeScript build]
+    PAR --> TF[Terraform validate]
+    PAR --> H[Helm lint + template]
+    PAR --> D[Docker build\nno push]
+    PAR --> TV[Trivy CRITICAL/HIGH]
+    PAR --> MT[Multi-tenant smoke\nx-tenant-id required]
+    L & TF & H & D & TV & MT --> GATE{CI gate\nall-checks job}
+    GATE -->|fail| BLOCK[Merge blocked]
+    GATE -->|pass| MERGE[Merge to main]
   end
 
-  parallel --> PUSH[Push image\nghcr.io/omniroute-api]
-  PUSH --> CAN[Canary 10%\nHelm upgrade]
-  CAN --> HG{Health gate\nP99 · error %}
-  HG -->|fail| RB[helm rollback\nautomated]
-  HG -->|pass| PR[Promote 100%]
+  subgraph mainflow [main branch only]
+    MERGE --> PUSH[Push Docker image\nghcr.io/omniroute-api:sha]
+    PUSH --> CAN[Canary 10%]
+    CAN --> HG{Health SLO}
+    HG -->|fail| RB[helm rollback]
+    HG -->|pass| FULL[Promote 100%]
+  end
 ```
 
-| Stage | Artifact | Behavior |
-|-------|----------|----------|
-| Quality gates | `.github/workflows/deploy.yml`, `Jenkinsfile` | Parallel lint, TF, Helm, Trivy |
-| Canary | Helm `omniroute-api` | 10% traffic |
-| Rollback | `deploy.yml` `deploy-canary` job | Simulated SLO breach → `helm rollback` |
+| Check | What it catches | Artifact |
+|-------|-----------------|----------|
+| **Lint & compile** | TypeScript errors, broken imports | `npm run build` in `3-saas-application` |
+| **Terraform** | Invalid IaC before any apply | `1-iaas-infra/terraform` |
+| **Helm** | Broken Kubernetes templates | `2-paas-platform/helm/omniroute-api` |
+| **Docker build** | Dockerfile / runtime packaging failures | `3-saas-application/Dockerfile` |
+| **Trivy** | Critical/high vulnerabilities in the image | Fails pipeline on CRITICAL,HIGH |
+| **Multi-tenant smoke** | Missing `x-tenant-id`, tenant mix-ups | `scripts/ci-tenant-smoke.mjs` |
+| **CI gate (`all-checks`)** | Any job skipped or failed | Required for merge to `main` |
+
+### Multi-engineer workflow
+
+1. Create a branch from `main`, open a **pull request**.
+2. GitHub Actions runs all checks in parallel (`concurrency` cancels stale runs on the same branch).
+3. Reviewers require the **`CI gate (merge blocker)`** job green before merge.
+4. After merge to **`main`**, workflow pushes `ghcr.io/bharat2476/omniroute-api:${{ github.sha }}` and runs canary → health gate → promote or rollback.
+
+Local multi-tenant test (same as CI):
+
+```bash
+cd 3-saas-application
+npm run test:tenant
+```
+
+Jenkins mirror: [`Jenkinsfile`](Jenkinsfile) runs the same parallel stages for enterprises using Jenkins instead of GitHub Actions.
+
+| Deploy stage | When | Behavior |
+|--------------|------|----------|
+| Docker push | `main` push only | Immutable image tag = git SHA |
+| Canary | After push | 10% traffic on new image |
+| Rollback | Health gate fail | `helm rollback` |
+| Promote | Canary pass | 100% traffic |
 
 ---
 
@@ -545,6 +607,7 @@ flowchart LR
 - **Multi-region** Terraform/Helm parameters isolate blast radius; surviving regions continue Global processing while Edge warehouses operate autonomously until sync resumes.
 - **Pub/Sub decoupling** (`3-saas-application/src/pubsub/`) isolates PIM catalog floods from order pipelines — critical for **Black Friday** spikes when SKU deltas arrive in millions.
 - **Karpenter + HPA** scale on CPU *and* `omniroute_pubsub_backlog_depth` (see [`2-paas-platform/helm/omniroute-api/values.yaml`](2-paas-platform/helm/omniroute-api/values.yaml)).
+- **CI/CD:** Docker image build on every PR; push to registry on **`main` only**; **multi-tenant smoke tests** and **`all-checks` merge gate** so multiple engineers cannot merge broken code (see [CI/CD](#cicd--docker-images-multi-tenant-gates-and-safe-merges-to-main)).
 - **Canary + automated rollback** in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) and [`Jenkinsfile`](Jenkinsfile) when post-deploy P99 latency or error rate breaches SLO.
 
 ### Operations
