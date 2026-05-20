@@ -1,0 +1,82 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/bharat2476/omniroute-api
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: istio
+  hosts:
+    - host: api.omniroute.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 70
+  # Custom metric: pubsub queue depth (requires metrics adapter)
+  queueDepthMetric:
+    enabled: true
+    externalMetricName: omniroute_pubsub_backlog_depth
+    targetAverageValue: 500
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 10
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+env:
+  NODE_ENV: production
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4317
+  LOG_LEVEL: info
+
+tenantRateLimit:
+  enabled: true
+  headerName: x-tenant-id
+
+nodeSelector:
+  omniroute.io/node-pool: workloads
+
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: omniroute-api
+          topologyKey: kubernetes.io/hostname

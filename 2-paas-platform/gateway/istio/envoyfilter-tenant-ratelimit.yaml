@@ -1,0 +1,100 @@
+# Istio EnvoyFilter — parse x-tenant-id and enforce per-tenant rate limits (noisy-neighbor neutralization)
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: omniroute-tenant-ratelimit
+  namespace: omniroute
+spec:
+  workloadSelector:
+    labels:
+      app.kubernetes.io/name: omniroute-api
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                local tenant = request_handle:headers():get("x-tenant-id")
+                if tenant == nil or tenant == "" then
+                  request_handle:respond(
+                    {[":status"] = "400"},
+                    "Missing required header: x-tenant-id"
+                  )
+                  return
+                end
+                request_handle:headers():add("x-omniroute-tenant-validated", tenant)
+              end
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: omniroute_tenant_ratelimit
+              token_bucket:
+                max_tokens: 5000
+                tokens_per_fill: 5000
+                fill_interval: 60s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              descriptors:
+                - entries:
+                    - key: header_match
+                      value: x-tenant-id
+              response_headers_to_add:
+                - append_action: APPEND_IF_EXISTS_OR_ADD
+                  header:
+                    key: x-omniroute-rate-limit
+                    value: enforced
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: omniroute-api
+  namespace: omniroute
+spec:
+  hosts:
+    - api.omniroute.local
+  gateways:
+    - omniroute-gateway
+  http:
+    - match:
+        - headers:
+            x-tenant-id:
+              regex: ".+"
+      route:
+        - destination:
+            host: omniroute-api
+            port:
+              number: 8080
+      timeout: 30s
+      retries:
+        attempts: 2
+        perTryTimeout: 10s

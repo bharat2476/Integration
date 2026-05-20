@@ -1,0 +1,6 @@
+apiVersion: v2
+name: omniroute-api
+description: OmniRoute-Core API workload with queue-driven HPA
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

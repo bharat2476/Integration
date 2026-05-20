@@ -22,6 +22,15 @@ build/
 .DS_Store
 Thumbs.db
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+
 # Logs
 *.log
 npm-debug.log*
+
+# OmniRoute SaaS build
+3-saas-application/dist/
+3-saas-application/node_modules/

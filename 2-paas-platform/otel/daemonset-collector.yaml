@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: omniroute-api
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  regex: omniroute-api
+                  action: keep
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+      resource:
+        attributes:
+          - key: service.namespace
+            value: omniroute
+            action: upsert
+      attributes/tenant:
+        actions:
+          - key: tenant.id
+            from_attribute: http.request.header.x_tenant_id
+            action: upsert
+    exporters:
+      otlp/splunk:
+        endpoint: ${SPLUNK_OTEL_ENDPOINT}
+        tls:
+          insecure: false
+      logging:
+        loglevel: warn
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, attributes/tenant, batch]
+          exporters: [otlp/splunk, logging]
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, attributes/tenant, batch]
+          exporters: [otlp/splunk]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, attributes/tenant, batch]
+          exporters: [otlp/splunk]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args: ["--config=/conf/otel-collector-config.yaml"]
+          env:
+            - name: SPLUNK_OTEL_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: splunk-otel
+                  key: endpoint
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config

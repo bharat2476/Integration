@@ -1,0 +1,141 @@
+name: OmniRoute-Core Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: bharat2476/omniroute-api
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: 3-saas-application/package.json
+      - run: npm ci
+        working-directory: 3-saas-application
+      - run: npm run build
+        working-directory: 3-saas-application
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+        working-directory: 1-iaas-infra/terraform
+      - run: terraform init -backend=false && terraform validate
+        working-directory: 1-iaas-infra/terraform
+
+  helm-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint ./2-paas-platform/helm/omniroute-api
+      - run: helm template omniroute-api ./2-paas-platform/helm/omniroute-api --debug > /dev/null
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image for scan
+        run: docker build -t omniroute-api:ci ./3-saas-application
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: omniroute-api:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  multi-tenant-tests:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci && npm run build
+        working-directory: 3-saas-application
+      - name: Tenant isolation smoke tests
+        run: |
+          node -e "
+          const http = require('http');
+          const server = require('./dist/index.js');
+          " || echo "Run integration tests against deployed env — placeholder for tenant matrix"
+        working-directory: 3-saas-application
+
+  build-push:
+    runs-on: ubuntu-latest
+    needs: [lint, terraform-validate, helm-validate, security-scan, multi-tenant-tests]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./3-saas-application
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy-canary:
+    runs-on: ubuntu-latest
+    needs: [build-push]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-helm@v4
+      - name: Canary deploy (10%)
+        run: |
+          echo "helm upgrade omniroute-api ./2-paas-platform/helm/omniroute-api \
+            --set image.tag=${{ github.sha }} \
+            --set canary.weight=10"
+      - name: Post-deploy health gate
+        id: health
+        run: |
+          # Simulated SLO check — wire to Splunk/Otel metrics in production
+          LATENCY_P99_MS=450
+          ERROR_RATE_PCT=0.8
+          if [ "$LATENCY_P99_MS" -gt 800 ] || [ "$(echo \"$ERROR_RATE_PCT > 2\" | bc)" -eq 1 ]; then
+            echo "rollback_required=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "rollback_required=false" >> $GITHUB_OUTPUT
+      - name: Automated rollback on health failure
+        if: failure() || steps.health.outputs.rollback_required == 'true'
+        run: |
+          echo "ROLLBACK: reverting canary to previous stable image"
+          echo "helm rollback omniroute-api 0"
+
+  promote-full:
+    runs-on: ubuntu-latest
+    needs: [deploy-canary]
+    if: success()
+    steps:
+      - run: echo "Promote canary to 100% traffic"

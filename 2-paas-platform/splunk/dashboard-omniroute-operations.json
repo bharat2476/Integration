@@ -1,0 +1,86 @@
+{
+  "title": "OmniRoute-Core — Supply Chain Operations",
+  "description": "Real-time tenant latency, WES vendor error rates, and P99 API throughput",
+  "theme": "dark",
+  "visualizations": [
+    {
+      "id": "panel_tenant_latency",
+      "type": "line",
+      "title": "Processing Latency per Tenant (ms)",
+      "position": { "x": 0, "y": 0, "w": 12, "h": 4 },
+      "search": {
+        "query": "index=omniroute_metrics metric=order_pipeline_duration_ms | stats p50(duration) as p50, p95(duration) as p95, p99(duration) as p99 by tenant.id | timechart span=1m avg(p99) by tenant.id",
+        "earliest": "-4h",
+        "latest": "now"
+      },
+      "options": {
+        "legendDisplay": "bottom",
+        "stackMode": "none",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "panel_wes_vendor_errors",
+      "type": "column",
+      "title": "Error Rate % by Active Warehouse Vendor (WES)",
+      "position": { "x": 0, "y": 4, "w": 6, "h": 4 },
+      "search": {
+        "query": "index=omniroute_logs sourcetype=omniroute:execution (vendor=AutoStore OR vendor=Vanderlande OR vendor=Locus OR vendor=Schaefer OR vendor=Rapyuta) | eval error=if(status>=400 OR status=\"ERROR\",1,0) | stats sum(error) as errors count as total by vendor | eval error_pct=round(100*errors/total,2) | sort -error_pct",
+        "earliest": "-24h",
+        "latest": "now"
+      },
+      "options": {
+        "unit": "percent",
+        "thresholds": [
+          { "from": 0, "to": 2, "color": "#53a051" },
+          { "from": 2, "to": 5, "color": "#f8be34" },
+          { "from": 5, "to": 100, "color": "#dc4e41" }
+        ]
+      }
+    },
+    {
+      "id": "panel_p99_throughput",
+      "type": "area",
+      "title": "P99 API Throughput (req/s)",
+      "position": { "x": 6, "y": 4, "w": 6, "h": 4 },
+      "search": {
+        "query": "index=omniroute_metrics metric=http_server_duration service.name=omniroute-api | bucket _time span=1m | stats count as requests by _time | eval rps=requests/60 | timechart span=1m perc99(rps) as p99_rps",
+        "earliest": "-4h",
+        "latest": "now"
+      },
+      "options": {
+        "unit": "req/s"
+      }
+    },
+    {
+      "id": "panel_pubsub_backlog",
+      "type": "single",
+      "title": "Pub/Sub Backlog Depth (HPA trigger)",
+      "position": { "x": 0, "y": 8, "w": 4, "h": 2 },
+      "search": {
+        "query": "index=omniroute_metrics metric=omniroute_pubsub_backlog_depth | stats latest(value) as backlog",
+        "earliest": "-15m",
+        "latest": "now"
+      }
+    },
+    {
+      "id": "panel_osd_variance",
+      "type": "table",
+      "title": "OS&D Variance — Finance Audit Feed",
+      "position": { "x": 4, "y": 8, "w": 8, "h": 4 },
+      "search": {
+        "query": "index=omniroute_audit sourcetype=inventory:adjustment adjustment_type IN (overage, shortage, damage) | table _time tenant.id sku reason_code quantity_delta audit.legal_hold",
+        "earliest": "-7d",
+        "latest": "now"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "type": "dropdown",
+      "token": "tenant_filter",
+      "title": "Tenant",
+      "search": "index=omniroute_metrics | dedup tenant.id | table tenant.id"
+    }
+  ]
+}
