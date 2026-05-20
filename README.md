@@ -1,25 +1,68 @@
 # Omni-Channel End to End Integration
 
-**Omni-Channel End to End Integration** is a production-ready architectural blueprint for a decoupled, multi-tenant supply chain abstraction layer. It connects **OMS**, **PIM**, **SAP ERP**, **Manhattan WMS**, **WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta), and **Blue Yonder TMS** without tight coupling between domain systems.
+**Omni-Channel End to End Integration** (OmniRoute-Core in code) is a production-ready architectural blueprint for a decoupled, multi-tenant supply chain abstraction layer. It connects **OMS**, **PIM**, **SAP ERP**, **Manhattan WMS**, **WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta), and **Blue Yonder TMS** — so a **customer order** moves from checkout to on-time delivery without tight coupling between domain systems.
 
 Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration)
 
 **Local dev UI:** [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) (after `npm run dev` in `3-saas-application`)
 
-### Non Tech Persona
+## Choose your view
 
-Open the **Product Guide** first — step-by-step walkthrough, and links to every demo screen: [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide)
+Pick the guide that matches how you work:
+
+| Persona | Best for | Jump to |
+|---------|----------|---------|
+| **Non Tech** | Business stakeholders, operations leaders, finance/legal reviewers, first-time demos | **[Non Tech Persona →](#non-tech-persona)** |
+| **Tech** | Engineers, architects, platform teams, CI/CD operators | **[Tech Persona →](#tech-persona)** |
+
+---
+
+## Non Tech Persona
+
+> **OmniRoute-Core — explained simply**  
+> Think of this as the **coordination layer** between your selling website, finance system, warehouse, robots, and carriers. It is not a replacement for Manhattan or SAP — it is the **glue** that keeps them aligned so the customer gets the right product on time.
+
+### Live demo (start here)
+
+Open the in-app **Product Guide** and linked screens (local):
+
+| Screen | URL |
+|--------|-----|
+| **Product Guide** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| Order execution (rush vs standard) | [http://localhost:8080/ui/orders](http://localhost:8080/ui/orders) |
+| PIM catalog | [http://localhost:8080/ui/catalog](http://localhost:8080/ui/catalog) |
+| Warehouse tasks | [http://localhost:8080/ui/warehouse](http://localhost:8080/ui/warehouse) |
+| Inventory & OS&D | [http://localhost:8080/ui/inventory](http://localhost:8080/ui/inventory) |
+| Global / Edge / Data | [http://localhost:8080/ui/platform](http://localhost:8080/ui/platform) |
+| Health & metrics | [http://localhost:8080/ui/health](http://localhost:8080/ui/health) |
+
+```powershell
+cd C:\Users\agarw\Integrations\3-saas-application
+npm install
+npm run dev
+```
 
 ### Main objective — customer order to on-time delivery
 
-After a **customer places an order**, OmniRoute-Core orchestrates the **end-to-end fulfillment path** across OMS, GCP (Nike in-house protocols), SAP, Manhattan WMS, on-prem WES, and Blue Yonder TMS — so the order ships within the **promised timeline**.
+When a **customer places an order**, the platform’s job is the **end-to-end fulfillment journey**:
 
-| Urgency | Demo SLA | Behind the scenes |
-|---------|----------|-------------------|
-| **Rush / urgent** | ~24h ship target | Higher `priorityScore`, **RUSH** Manhattan wave, expedited TMS, Edge robotics prioritized |
-| **Standard / non-rush** | ~5 day ship target | Standard wave tier, ground freight, fills capacity between rush peaks |
+1. Accept the order from the selling channel (OMS).
+2. Confirm finance can support the shipment (SAP).
+3. Release work to the warehouse (Manhattan WMS).
+4. Run floor and robot tasks at the building (Edge — on-prem).
+5. Book the right carrier service (Blue Yonder TMS).
+6. Close the books and confirm shipment (SAP).
 
-API: `POST /api/v1/execution/orders` with `"shipUrgency": "rush"` or `"standard"`. Response includes `promisedShipBy`, `waveTier`, and `priorityScore`.
+Every step shares the same **tracking ID** internally so support teams can see where a delay happened.
+
+### Rush vs standard (priority)
+
+| Priority | Typical promise (demo) | What happens behind the scenes |
+|----------|------------------------|--------------------------------|
+| **Rush / urgent** | ~24 hour ship target | Jumps ahead in the warehouse queue (**RUSH** wave), expedited shipping, robots prioritized |
+| **Standard / non-rush** | ~5 day ship target | Normal queue; fills capacity between urgent orders |
+
+Urgent orders are **not** treated the same as routine orders — the warehouse and carriers get a higher priority signal so promised dates are met.
 
 ```mermaid
 flowchart LR
@@ -33,11 +76,128 @@ flowchart LR
   SAP2 --> C2[Customer shipped]
 ```
 
+### The customer journey (step by step)
+
+```
+Customer checks out  →  Finance OK  →  Warehouse wave  →  Pick / pack / ship  →  Carrier  →  Customer notified
+```
+
+| Step | What the customer sees | What the business does (systems) |
+|------|------------------------|----------------------------------|
+| 1 | Order confirmation | Order captured in OMS; translated via **GCP** to internal Nike protocols |
+| 2 | — | SAP pledges inventory / funds |
+| 3 | — | Manhattan releases a **priority wave** (rush first) |
+| 4 | — | Edge site: pick, pack, robots, label |
+| 5 | Tracking number | TMS rates express vs ground by urgency |
+| 6 | “Shipped” email | Ship confirm + SAP financial close |
+
+**Why so many systems?** Each owns one job (money, physical stock, robots, trucks). OmniRoute-Core orchestrates them so teams do not re-type orders or lose time during peak weeks.
+
+### Two parts: Global (cloud) and Edge (warehouse)
+
+| Part | Where it runs | What it does |
+|------|---------------|--------------|
+| **Global** | Shared **cloud** (multi-region) | Same WMS estate for all brands: orders, catalog, finance, carriers |
+| **Edge** | **On-prem** at each warehouse | Fast local actions: waves, picks, AMRs, labels — different robot vendors per building |
+
+Edge stays in the building so scanners and robots stay **fast**. Global stays in the cloud so one integration serves every tenant and region.
+
+### Where data lives (plain language)
+
+| Store | Holds |
+|-------|--------|
+| **SQL database** | Structured facts — order lines, quantities, reconciliation |
+| **MongoDB** | JSON payloads — large catalog files, audit documents, event detail |
+| **GCP** | Translates messages **to and from Nike in-house service protocols** |
+
+**PostgreSQL was not used** for this production integration.
+
+### How the team ships changes safely (CI/CD)
+
+Many engineers work in parallel. **Bad changes do not merge to `main`** until automated checks pass:
+
+- **Docker image** builds correctly (same packaging as production).
+- **Security scan** blocks critical image issues.
+- **Multi-tenant tests** ensure every API call includes a tenant ID and tenants do not mix.
+- **Merge gate** — all checks must be green before code joins `main`.
+
+Only after merge does the new Docker image deploy (canary → health check → full rollout or automatic rollback).
+
+### Business outcomes
+
+| Outcome | How the platform helps |
+|---------|-------------------------|
+| On-time delivery | SLA clock + rush priority on every order |
+| Lower cost | Shared cloud resources; Edge only where speed requires it |
+| Resilience | Multiple regions; warehouse can keep working if one cloud region blips |
+| Audit & compliance | OS&D reason codes; finance/legal flags on adjustments |
+
+### Who benefits
+
+**Operations** — Clear floor actions (release wave, pick, ship), Splunk views for errors by robot vendor, rush vs standard visibility.
+
+**Finance & Legal** — Daily WMS vs SAP reconciliation; overage/shortage/damage adjustments with audit trail and legal hold on damage.
+
+### The big picture
+
+```
+Customer order (OMS)
+    → GCP (Nike protocol translation)
+    → Global coordination (SAP · Manhattan · TMS)
+    → Edge warehouse (pick · pack · robots · ship)
+    → Finance close + inventory hygiene
+    → Dashboards (latency · errors · SLA)
+```
+
+### What this product is — and is not
+
+| It is | It is not |
+|-------|-----------|
+| An **integration orchestration** platform | A replacement WMS or ERP |
+| **Multi-tenant** and **multi-region** in the cloud | One database for everything (uses SQL + MongoDB) |
+| Built for **peak volume** and **rush priority** | A single-warehouse-only tool |
+| **Edge on-prem** where latency matters | All processing in the cloud only |
+
+### One-sentence summary
+
+**OmniRoute-Core coordinates customer orders across OMS, finance, warehouse, robotics, and shipping — prioritizing urgent orders, meeting delivery promises, and leaving a clear audit trail — while translating all traffic through GCP to Nike in-house services.**
+
+### 5-minute try path
+
+1. [Product Guide](http://localhost:8080/ui/guide) — read the walkthrough  
+2. [Orders](http://localhost:8080/ui/orders) — run one **rush** and one **standard** order  
+3. [Warehouse](http://localhost:8080/ui/warehouse) — print a sample label  
+4. [Inventory](http://localhost:8080/ui/inventory) — view audit ledger  
+
+Need architecture, Terraform, Helm, CI/CD job names, and API contracts? Switch to the **[Tech Persona →](#tech-persona)** guide.
+
+[↑ Back to Choose your view](#choose-your-view)
+
 ---
+
+## Tech Persona
+
+Technical reference for engineers, architects, and platform operators. Covers three-pillar architecture, GCP/Nike protocol bridge, MongoDB + SQL data plane, workflows, CI/CD (Docker + multi-tenant gates), and runbooks.
+
+**Quick jump:**
+
+| Topic | Section |
+|-------|---------|
+| Data platform (MongoDB, SQL, GCP) | [Data platform](#data-platform-mongodb-sql-and-gcp-nike-protocol-bridge) |
+| Global vs Edge | [Integration topology](#integration-topology-global-vs-edge) |
+| Architecture (3 pillars) | [Architecture diagram](#architecture-diagram-three-pillars--artifacts) |
+| Order / catalog workflows | [Workflows A–D](#workflow-a--pim-catalog-pubsub) |
+| CI/CD & Docker | [CI/CD](#cicd--docker-images-multi-tenant-gates-and-safe-merges-to-main) |
+| Run locally | [Quick start](#quick-start) |
+
+> **Production data:** **MongoDB** (JSON / unstructured), **SQL** (structured). **GCP** translates to/from **Nike in-house service protocols**. **PostgreSQL was not used.** `1-iaas-infra/terraform/rds.tf` is an optional AWS reference sample only.
+
+### Local dev UI
 
 | Page | URL |
 |------|-----|
-| **Product Guide** (start here) | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| Product Guide | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| Overview (API console) | [http://localhost:8080/](http://localhost:8080/) |
 | Order execution | [http://localhost:8080/ui/orders](http://localhost:8080/ui/orders) |
 | PIM catalog | [http://localhost:8080/ui/catalog](http://localhost:8080/ui/catalog) |
 | Warehouse tasks | [http://localhost:8080/ui/warehouse](http://localhost:8080/ui/warehouse) |
@@ -45,596 +205,233 @@ flowchart LR
 | Global / Edge / Data | [http://localhost:8080/ui/platform](http://localhost:8080/ui/platform) |
 | Health & metrics | [http://localhost:8080/ui/health](http://localhost:8080/ui/health) |
 
-> **Production data platform (as integrated):** **MongoDB** for JSON and non-structured payloads, a **SQL database** for structured transactional data, and **GCP** as the translation layer to **Nike in-house service protocols**. **PostgreSQL was not used** for this integration. Files under `1-iaas-infra/terraform/rds.tf` and `sql/tenant_rls_bootstrap.sql` are optional AWS reference samples only—not the live datastore design.
-
 ---
 
-## Data platform: MongoDB, SQL, and GCP (Nike protocol bridge)
+### Data platform: MongoDB, SQL, and GCP (Nike protocol bridge)
 
-Integrations persist and move data by **shape**, not a single monolithic database.
-
-| Store | Data profile | Examples in the supply chain flow |
-|-------|--------------|-----------------------------------|
-| **MongoDB** | Semi-structured / JSON — catalog deltas, raw partner payloads, OS&D audit documents, pub/sub message bodies, transformation snapshots | PIM bulk attributes, WES telemetry blobs, legal audit exports |
-| **SQL DB** | Structured — relational facts with strict keys and reporting joins | Order headers/lines, inventory quantities, reconciliation outcomes, tenant registry |
-| **GCP** | **Protocol translation** — transform messages **to and from** Nike in-house service contracts | Canonical OmniRoute events ↔ Nike internal APIs/topics |
-
-**PostgreSQL was not part of the production integration.** Structured data lived in **SQL** (enterprise-standard RDBMS per ops policy); unstructured data lived in **MongoDB**. Do not map the live design to `rds.tf` unless you are prototyping on AWS.
+| Store | Data profile | Examples |
+|-------|--------------|----------|
+| **MongoDB** | Semi-structured / JSON | PIM deltas, raw partner payloads, OS&D audit docs, pub/sub bodies |
+| **SQL DB** | Structured relational | Order headers/lines, inventory ledger, reconciliation |
+| **GCP** | Protocol translation | Nike in-house schema mapping inbound/outbound |
 
 ```mermaid
 flowchart TB
-  subgraph partners [External ecosystems]
-    OMS_P[OMS]
-    PIM_P[PIM]
-    SAP_P[SAP]
-    MHT_P[Manhattan WMS]
-    WES_P[WES vendors]
-  end
-
-  subgraph gcp [GCP — translation and transformation layer]
-    PUB[Pub/Sub or Eventarc ingress]
-    CF[Cloud Functions / Dataflow transforms]
-    MAP[Protocol adapters\nNike in-house schema mapping]
-    EGRESS[Egress to Nike services]
-  end
-
-  subgraph nike [Nike in-house services]
-    NIKE_API[Internal service APIs]
-    NIKE_BUS[Enterprise message bus]
-  end
-
-  subgraph global_api [Global integration API]
-    OR[OmniRoute / Integration API\n3-saas-application]
-  end
-
-  subgraph data [Dual persistence — not PostgreSQL]
-    MONGO[(MongoDB\nJSON · events · audits)]
-    SQL[(SQL DB\nstructured orders · inventory)]
-  end
-
-  partners <-->|partner protocols| gcp
-  gcp <-->|to / from Nike contracts| nike
-  gcp <--> OR
-  OR --> MONGO
-  OR --> SQL
-  MAP --> MONGO
-  MAP --> SQL
+  partners[OMS · PIM · SAP · WMS · WES] <-->|partner protocols| gcp[GCP transforms]
+  gcp <-->|Nike contracts| nike[Nike in-house services]
+  gcp <--> api[3-saas-application API]
+  api --> mongo[(MongoDB)]
+  api --> sql[(SQL DB)]
 ```
-
-| Direction | Responsibility |
-|-----------|----------------|
-| **Inbound** (partner → Nike) | GCP normalizes OMS/PIM/WMS payloads, validates, writes structured rows to **SQL**, archives raw JSON to **MongoDB**, publishes Nike-shaped messages |
-| **Outbound** (Nike → partner) | GCP reads **SQL** state + **MongoDB** context, applies Nike protocol envelopes, delivers to Manhattan/SAP/TMS endpoints |
-| **Observability** | Correlation IDs span GCP transforms, API logs, SQL transaction IDs, and MongoDB document `_id` |
 
 ---
 
-## Integration topology: Global vs Edge
+### Integration topology: Global vs Edge
 
-OmniRoute-Core ships as **two integration components**. They share contracts (`x-tenant-id`, `x-correlation-id`, pub/sub topics) but differ in **deployment footprint**, **latency targets**, and **automation scope**.
-
-| Component | Deployment | Scope | Primary systems | Repository focus |
-|-----------|------------|-------|-----------------|------------------|
-| **Global** | Multi-region **cloud** (AWS EKS) | All ecosystems on the **same WMS** (e.g. Manhattan) | OMS, PIM, SAP, Manhattan, Blue Yonder TMS, shared catalog & order orchestration | `1-iaas-infra/`, `2-paas-platform/`, SaaS domains: `catalog/`, `execution/`, `inventory/` |
-| **Edge** | **On-prem** per warehouse | One facility; **site-specific WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta) | Floor automation, pick/pack/ship, labels, AMR missions | SaaS domain: `warehouse-tasks/` + local Edge gateway cache |
-
-**Why split Global and Edge?**
-
-- **Global** amortizes integration cost: one PIM broker, one order pipeline, and one SAP close-loop serve every tenant and brand on a shared Manhattan estate.
-- **Edge** stays on-prem to meet **tight SLOs** (sub-second robotics handshakes) and avoid cloud round-trips for scanners, AMRs, and pack lines.
-- Each warehouse can run a **different automation vendor** without changing Global configs—only Edge Helm values / env profiles change.
+| Component | Deployment | Scope | Repo focus |
+|-----------|------------|-------|------------|
+| **Global** | Multi-region EKS | Shared Manhattan estate; OMS/PIM/SAP/TMS | `1-iaas-infra/`, `2-paas-platform/`, `catalog/`, `execution/`, `inventory/` |
+| **Edge** | On-prem per DC | Site WES vendors (Locus, AutoStore, …) | `warehouse-tasks/` |
 
 ```mermaid
 flowchart TB
-  subgraph regions [Multi-region Global — disruption isolation]
-    R1[Region US-East\nEKS + SQL replica]
-    R2[Region US-West\nEKS + SQL replica]
-    R3[Region EU-Central\nEKS + SQL replica]
-  end
-
-  subgraph global [Global integration — cloud shared services]
-    GAPI[OmniRoute Global API\nexecution · catalog · inventory]
-    GPS[Shared Pub/Sub\npim.catalog.delta · order.execution.stage]
-    GCP_T[GCP translation layer\nNike protocol mapping]
-    SQL_D[(SQL DB — structured)]
-    MONGO_D[(MongoDB — JSON / events)]
-    GW_GLOBAL[Istio + tenant rate limit\n2-paas-platform]
-  end
-
-  subgraph shared [Shared resources — cost control]
-    EKS_SH[Shared EKS cluster per region\nterraform/eks.tf]
-    KARP[Karpenter spot + on-demand\nnodepool-workloads.yaml]
-    OTEL_SH[Shared OTel DaemonSet\n→ Splunk]
-    HELM_SH[One Helm chart — HPA scale-to-zero friendly]
-  end
-
-  OMS & PIM & SAP & MHT_CLOUD[Manhattan central] & TMS --> GCP_T
-  GCP_T --> GW_GLOBAL --> GAPI
-  GAPI --> GPS
-  GAPI --> SQL_D & MONGO_D
-  regions --> global
-  shared --> global
-  GCP_T --> NIKE[Nike in-house services]
-
-  subgraph edge_wh1 [Edge — Warehouse A on-prem]
-    E1[Edge API / agent\nwarehouse-tasks]
-    WES1[Locus AMR]
-    E1 --> WES1
-  end
-
-  subgraph edge_wh2 [Edge — Warehouse B on-prem]
-    E2[Edge API / agent\nwarehouse-tasks]
-    WES2[AutoStore shuttle]
-    E2 --> WES2
-  end
-
-  GAPI <-->|Async catalog + order stages| E1 & E2
-  MHT_CLOUD <-->|Waves / inventory| E1 & E2
-  E1 & E2 -->|auto-pick · auto-pack · labels| Floor1[Floor systems]
+  OMS & PIM & SAP & MHT & TMS --> GCP_T[GCP layer]
+  GCP_T --> GW[Istio x-tenant-id rate limit]
+  GW --> GAPI[Global API]
+  GAPI --> SQL_D[(SQL)] & MONGO_D[(MongoDB)]
+  GAPI <-->|catalog + order stages| EDGE[Edge warehouse-tasks]
 ```
 
----
-
-## Shared resources and cost efficiency
-
-Platform engineering **consolidates infrastructure** so tenants and brands share pools instead of provisioning duplicate clusters per integration.
-
-| Shared resource | How cost stays low | Config artifact |
-|-----------------|-------------------|-----------------|
-| **EKS cluster** | One regional control plane; many workloads per cluster | `1-iaas-infra/terraform/eks.tf` |
-| **Karpenter NodePools** | Mix **spot** + on-demand; scale nodes to zero when queues drain | `2-paas-platform/karpenter/nodepool-workloads.yaml` |
-| **Helm release** | Single `omniroute-api` chart for all tenants; reuse image + PDB | `2-paas-platform/helm/omniroute-api/` |
-| **SQL DB** | One shared structured store; tenant/partition strategy replaces per-tenant DB sprawl | Production SQL tier (not PostgreSQL) |
-| **MongoDB** | Shared cluster for JSON payloads; indexed by `tenantId` + `correlationId` | Production MongoDB tier |
-| **GCP transforms** | Reusable Cloud Functions / pipelines — one translation codebase for all regions | GCP project per region or shared multi-region |
-| **Observability** | Shared OTel collectors → Splunk (no per-warehouse Splunk index sprawl) | `otel/daemonset-collector.yaml`, `splunk/dashboard-*.json` |
-| **CI/CD** | One pipeline validates all pillars before any deploy | `.github/workflows/deploy.yml`, `Jenkinsfile` |
-| **Global API** | Catalog and order logic written once; Edge only runs thin floor adapters | `3-saas-application/src/` |
-
-**Noisy-neighbor protection without duplicate hardware:** Istio enforces per-tenant rate limits on the shared gateway (`envoyfilter-tenant-ratelimit.yaml`), so one tenant’s peak does not require a dedicated cluster.
+See also: [Shared resources](#shared-resources-and-cost-efficiency), [Multi-region](#multi-region-placement-avoid-disruption), [Engineer-driven scalability](#engineer-driven-scalability-config-not-heroics).
 
 ---
 
-## Multi-region placement (avoid disruption)
+### Shared resources and cost efficiency
 
-Infrastructure is **replicated across regions** so an AZ or regional outage does not halt the full supply chain network.
+| Shared resource | Cost control | Artifact |
+|-----------------|--------------|----------|
+| EKS cluster | One regional plane | `terraform/eks.tf` |
+| Karpenter | Spot + on-demand burst | `karpenter/nodepool-workloads.yaml` |
+| Helm | One chart, all tenants | `helm/omniroute-api/` |
+| SQL + MongoDB | Pooled stores, tenant isolation | Production tiers |
+| OTel → Splunk | Shared observability | `otel/`, `splunk/dashboard-*.json` |
+| CI/CD | One pipeline, all pillars | `.github/workflows/deploy.yml` |
 
-| Principle | Implementation |
-|-----------|----------------|
-| **Regional isolation** | Separate VPC + EKS + **SQL/MongoDB** replicas per region (`terraform/vpc.tf`, `variables.tf` `aws_region`) |
-| **Multi-AZ inside region** | Private, database, and NAT subnets span 3 AZs (`availability_zones`) |
-| **Global traffic** | Corporate OMS/PIM/SAP connect to the **nearest healthy region**; Global API remains active in surviving regions |
-| **Edge unaffected by cloud region loss** | On-prem Edge keeps pick/pack/ship running; syncs catalog/order state when Global is reachable |
-| **Data** | **SQL** primaries with multi-AZ; **MongoDB** replica sets; cross-region read replicas; GCP topics replicated per region |
-
-```mermaid
-flowchart LR
-  subgraph US_East [us-east-1]
-    EKS1[EKS Global]
-    SQL1[(SQL primary)]
-    MG1[(MongoDB)]
-  end
-  subgraph US_West [us-west-2]
-    EKS2[EKS Global]
-    SQL2[(SQL replica)]
-    MG2[(MongoDB)]
-  end
-  subgraph EU [eu-central-1]
-    EKS3[EKS Global]
-    SQL3[(SQL replica)]
-    MG3[(MongoDB)]
-  end
-
-  OMS_G[Corporate OMS] -->|route nearest GCP + EKS| EKS1 & EKS2 & EKS3
-  SQL1 -.->|async replication| SQL2 & SQL3
-
-  WH_EAST[Edge WH East on-prem] --> EKS1
-  WH_WEST[Edge WH West on-prem] --> EKS2
-```
-
-Engineers parameterize region in Terraform (`var.aws_region`, `var.environment`) and Helm (`values.yaml` per region)—no forked application code.
+Istio per-tenant rate limits: `gateway/istio/envoyfilter-tenant-ratelimit.yaml`.
 
 ---
 
-## Engineer-driven scalability (config, not heroics)
+### Multi-region placement (avoid disruption)
 
-Scale and resilience come from **versioned configs** checked into this repo. Operations change limits; they do not hand-edit production servers.
-
-| Knob | What engineers tune | Effect |
-|------|---------------------|--------|
-| `eks_managed_node_desired_size` | Baseline node count | Steady-state capacity |
-| Karpenter `limits.cpu` / `memory` | Burst ceiling | Black Friday / catalog flood headroom |
-| Helm `autoscaling.maxReplicas` | API pod ceiling | Order API throughput |
-| Helm `queueDepthMetric.targetAverageValue` | HPA on pub/sub backlog | Scale before queue latency grows |
-| Istio token bucket | Per-tenant `max_tokens` | Fair sharing on shared gateway |
-| SQL partitioning + MongoDB collections | Tenant isolation model | Tenant growth without new database clusters |
-| Canary `weight` in `deploy.yml` | Release risk | Safe rollout with auto-rollback |
-
-```mermaid
-flowchart LR
-  ENG[Platform engineer] --> TF[Terraform vars\n1-iaas-infra]
-  ENG --> HELM[Helm values\n2-paas-platform]
-  ENG --> APP[Env + HPA metrics\n3-saas-application]
-  TF --> AWS[AWS EKS / VPC + data tiers]
-  ENG --> GCP_CFG[GCP transform configs]
-  GCP_CFG --> GCP_RUN[GCP Nike protocol bridge]
-  HELM --> K8S[Kubernetes workloads]
-  APP --> K8S
-  METRICS[Splunk / OTel SLOs] -->|feedback| ENG
-```
-
-Peak example: PIM publishes millions of SKUs → `omniroute_pubsub_backlog_depth` rises → HPA adds API pods → Karpenter adds spot nodes → backlog drains → scale down after `scaleDown.stabilizationWindowSeconds` (see `helm/omniroute-api/values.yaml`).
+Separate VPC + EKS + data replicas per region; Edge warehouses continue on-prem if a cloud region fails. Parameterize via `var.aws_region` and Helm `values.yaml` per region.
 
 ---
 
-## Architecture diagram (three pillars + artifacts)
+### Engineer-driven scalability (config, not heroics)
 
-End-to-end platform view: corporate traffic enters the **cloud PaaS gateway** (Global), workloads run on multi-region IaaS, business logic lives in SaaS domains. **On-prem Edge** warehouses (not shown below) run `warehouse-tasks/` only—see [Global vs Edge](#integration-topology-global-vs-edge). Every box lists **repository artifacts**.
+| Knob | Artifact | Effect |
+|------|----------|--------|
+| Karpenter limits | `nodepool-workloads.yaml` | Peak CPU/memory ceiling |
+| HPA + queue depth | `helm/omniroute-api/values.yaml` | Scale on `omniroute_pubsub_backlog_depth` |
+| Istio token bucket | EnvoyFilter | Noisy-neighbor isolation |
+| Canary weight | `deploy.yml` | Safe rollout / rollback |
+
+---
+
+### Architecture diagram (three pillars + artifacts)
 
 ```mermaid
 flowchart TB
-  subgraph clients [Enterprise systems]
-    OMS[OMS\nOrder Management]
-    PIM[PIM\nProduct Information]
-    SAP[SAP ERP\nFinancial ledger]
-    MHT[Manhattan WMS\nWaves / picks]
-    WES[WES vendors\nAutoStore · Vanderlande\nLocus · Schaefer · Rapyuta]
-    TMS[Blue Yonder TMS\nFreight / carriers]
+  subgraph paas [2-paas-platform]
+    GW[Istio EnvoyFilter]
+    HELM[Helm omniroute-api + HPA]
+    OTEL[OTel DaemonSet]
+    SPL[Splunk dashboard]
   end
-
-  subgraph paas [2-paas-platform — Cloud gateway and runtime]
-    GW["Istio / Envoy\nenvoyfilter-tenant-ratelimit.yaml\nx-tenant-id + rate limit"]
-    HELM["Helm omniroute-api\nhelm/omniroute-api/*\nHPA + PDB + Deployment"]
-    OTEL["OTel DaemonSet\notel/daemonset-collector.yaml"]
-    SPL["Splunk dashboard\nsplunk/dashboard-omniroute-operations.json"]
-    KARP["Karpenter NodePool\nkarpenter/nodepool-workloads.yaml"]
+  subgraph saas [3-saas-application]
+    API[Express :8080]
+    PS[pubsub/broker.ts]
+    CAT EXEC WH INV[domain modules]
+    PORTAL[dev-portal/]
   end
-
-  subgraph saas [3-saas-application — Domain API]
-    API["Express API :8080\nsrc/app.ts · src/index.ts\nDockerfile"]
-    PS["Pub/Sub broker\nsrc/pubsub/broker.ts"]
-    CAT["Catalog / PIM\nsrc/catalog/*\nPOST /api/v1/catalog/delta"]
-    EXE["Execution / orders\nsrc/execution/*\nPOST /api/v1/execution/orders"]
-    WH["Warehouse tasks\nsrc/warehouse-tasks/*"]
-    INV["Inventory / OS&D\nsrc/inventory/*"]
-    PORTAL["Dev portal UI\nsrc/dev-portal.ts\nGET /"]
+  subgraph iaas [1-iaas-infra]
+    VPC[vpc.tf]
+    EKS[eks.tf + Karpenter]
   end
-
-  subgraph iaas [1-iaas-infra — AWS]
-    VPC["VPC multi-AZ\nterraform/vpc.tf"]
-    EKS["EKS private API\nterraform/eks.tf"]
-    GCP_L["GCP translation\nNike in-house protocols"]
-    SQL_DB["SQL DB — structured\ntenant orders · inventory"]
-    MONGO_DB["MongoDB — JSON\nevents · audit payloads"]
-  end
-
-  subgraph cicd [CI/CD artifacts]
-    GHA[".github/workflows/deploy.yml"]
-    JEN["Jenkinsfile"]
-  end
-
-  OMS & PIM & SAP & MHT & WES & TMS --> GW
-  GW --> HELM --> API
-  API --> PS
-  API --> CAT & EXE & WH & INV
-  API --> PORTAL
-  HELM --> KARP
-  EKS --> HELM
-  VPC --> EKS
-  GCP_L <--> API
-  API --> SQL_DB & MONGO_DB
+  clients[OMS PIM SAP MHT WES TMS] --> GW --> HELM --> API
+  API --> PS & CAT & EXEC & WH & INV
   API --> OTEL --> SPL
-  GHA & JEN --> HELM
-  GHA & JEN --> API
 ```
 
 | Layer | Path | Key artifacts |
 |-------|------|----------------|
-| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | `terraform/vpc.tf`, `eks.tf`, `karpenter.tf`, `outputs.tf` *(optional `rds.tf` = AWS Postgres sample only)* |
-| **PaaS** | [`2-paas-platform/`](2-paas-platform/) | `helm/omniroute-api/`, `gateway/istio/envoyfilter-tenant-ratelimit.yaml`, `otel/daemonset-collector.yaml`, `splunk/dashboard-omniroute-operations.json`, `karpenter/nodepool-workloads.yaml` |
-| **SaaS** | [`3-saas-application/`](3-saas-application/) | `src/pubsub/`, `src/catalog/`, `src/execution/`, `src/warehouse-tasks/`, `src/inventory/`, `src/shared/`, `Dockerfile` |
-| **CI/CD** | repo root | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), [`Jenkinsfile`](Jenkinsfile) |
+| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | `vpc.tf`, `eks.tf`, `karpenter.tf`, `outputs.tf` |
+| **PaaS** | [`2-paas-platform/`](2-paas-platform/) | `helm/omniroute-api/`, `gateway/istio/`, `otel/`, `splunk/` |
+| **SaaS** | [`3-saas-application/`](3-saas-application/) | `src/pubsub/`, `catalog/`, `execution/`, `warehouse-tasks/`, `inventory/`, `Dockerfile` |
+| **CI/CD** | repo root | `deploy.yml`, `Jenkinsfile` |
 
 ---
 
-## System workflow — all integrations and artifacts
+### System workflow — all integrations and artifacts
 
-Master sequence diagram: how an order and catalog change traverse **external systems**, **OmniRoute-Core**, **pub/sub topics**, **persistence**, and **observability artifacts**. `correlationId` is propagated on every hop (`src/shared/correlation.ts`).
+`correlationId` on every hop — `src/shared/correlation.ts`.
 
 ```mermaid
 sequenceDiagram
-  autonumber
   participant OMS as OMS
-  participant Edge as Istio Gateway<br/>envoyfilter-tenant-ratelimit.yaml
-  participant API as OmniRoute API<br/>3-saas-application
-  participant PS as EventBroker<br/>pubsub/broker.ts
-  participant SAP as SAP ERP
-  participant MHT as Manhattan WMS
-  participant WES as WES (Locus/Rapyuta/…)
-  participant TMS as Blue Yonder TMS
-  participant GCP as GCP translation<br/>Nike protocol mapping
-  participant SQL as SQL DB<br/>structured data
-  participant MONGO as MongoDB<br/>JSON / events
-  participant NIKE as Nike in-house<br/>services
-  participant OTEL as OTel Collector<br/>daemonset-collector.yaml
-  participant SPL as Splunk<br/>dashboard JSON
-
-  Note over PIM,PS: Catalog path (async, non-blocking)
-  participant PIM as PIM
-  PIM->>GCP: Partner catalog JSON
-  GCP->>NIKE: Nike-shaped catalog event
-  GCP->>MONGO: Store raw delta + transform snapshot
-  GCP->>API: POST /api/v1/catalog/delta
-  API->>PS: publish pim.catalog.delta
-  PS-->>API: CatalogWarehouseSubscriber<br/>warehouse-subscriber.ts
-  PS->>MHT: Ingest SKU cache (per node)
-
-  Note over OMS,SPL: Order execution path
-  OMS->>GCP: Order create (partner protocol)
-  GCP->>API: Normalized order + x-tenant-id
-  Edge->>API: POST /api/v1/execution/orders
-  API->>SAP: pledgeSapFinancial()<br/>integrations.ts
-  API->>PS: publish order.execution.stage ERP_PLEDGED
-  API->>MHT: releaseManhattanWave()
-  API->>WES: allocateWesRobotics()
-  API->>TMS: rateBlueYonderFreight()
-  API->>PS: publish order.execution.stage TMS_RATED
-  API->>SAP: closeSapOrderLoop()
-  API->>SQL: Persist order facts
-  API->>MONGO: Persist stage payloads + audit JSON
-  API->>GCP: Outbound Nike protocol close-out
-  GCP->>NIKE: Financial + fulfillment confirmation
-  API->>OTEL: Traces / metrics (tenant.id)
-  OTEL->>SPL: Latency · WES errors · P99
-
-  Note over API,SPL: Warehouse floor (operator / robotics)
-  API->>MHT: POST /warehouse-tasks/*<br/>wave · pick · pack · stage · ship
-  API->>WES: POST /warehouse-tasks/auto-pick
-  API-->>OMS: Labels ZPL/PDF stream<br/>labels/print
+  participant GCP as GCP
+  participant API as OmniRoute API
+  participant SAP as SAP
+  participant MHT as Manhattan
+  participant WES as WES
+  participant TMS as TMS
+  participant SQL as SQL
+  participant MONGO as MongoDB
+  OMS->>GCP: Order create
+  GCP->>API: Normalized + x-tenant-id
+  API->>SAP: pledgeSapFinancial
+  API->>MHT: releaseManhattanWave RUSH/STANDARD
+  API->>WES: allocateWesRobotics
+  API->>TMS: rateBlueYonderFreight
+  API->>SAP: closeSapOrderLoop
+  API->>SQL: Structured persist
+  API->>MONGO: JSON persist
 ```
+
+**Order API:** `POST /api/v1/execution/orders` with `"shipUrgency": "rush" | "standard"` → returns `priorityScore`, `promisedShipBy`, `waveTier`.
 
 ---
 
-## Workflow A — PIM catalog (pub/sub)
+### Workflow A — PIM catalog (pub/sub)
 
-Massive catalog deltas must not block order pipelines. **Artifact chain:** `pim-broker-client.ts` → topic `pim.catalog.delta` → `warehouse-subscriber.ts`.
-
-```mermaid
-flowchart LR
-  PIM[PIM system] -->|HTTP POST| R1["/api/v1/catalog/delta\ncatalog/routes.ts"]
-  R1 --> C[pim-broker-client.ts]
-  C --> T[(Topic: pim.catalog.delta\nbroker.ts)]
-  T --> S1[Warehouse node 1\nMHT-EAST / Locus]
-  T --> S2[Warehouse node 2\nMHT-WEST / AutoStore]
-  S1 & S2 -->|Async ingest| Cache[(Node SKU cache\nnon-blocking)]
-  T -.->|HPA signal| M[omniroute_pubsub_backlog_depth\nhelm HPA external metric]
-```
-
-| Step | Artifact | Output |
-|------|----------|--------|
-| Ingest delta | `src/catalog/routes.ts` | `202` + `messageId` |
-| Publish | `src/pubsub/broker.ts` | `PubSubMessage` + logs |
-| Fan-out | `src/catalog/warehouse-subscriber.ts` | Per-node ingest logs |
+`pim-broker-client.ts` → topic `pim.catalog.delta` → `warehouse-subscriber.ts` (non-blocking fan-out).
 
 ---
 
-## Workflow B — Order execution (OMS → ERP → WMS → WES → TMS → ERP)
+### Workflow B — Order execution (OMS → ERP → WMS → WES → TMS → ERP)
 
-Synchronous orchestration with async stage events. **Artifact chain:** `execution/routes.ts` → `order-pipeline.ts` → `integrations.ts`.
+`execution/routes.ts` → `order-pipeline.ts` → `integrations.ts` → `execution/priority.ts` (SLA + wave tier).
 
-```mermaid
-stateDiagram-v2
-  [*] --> RECEIVED_OMS: POST /execution/orders
-  RECEIVED_OMS --> ERP_PLEDGED: integrations.ts pledgeSapFinancial
-  ERP_PLEDGED --> WMS_WAVE_RELEASED: releaseManhattanWave
-  WMS_WAVE_RELEASED --> WES_ALLOCATED: allocateWesRobotics
-  WES_ALLOCATED --> TMS_RATED: rateBlueYonderFreight
-  TMS_RATED --> SHIPPED: warehouse-tasks/ship
-  SHIPPED --> ERP_CLOSED: closeSapOrderLoop
-  ERP_CLOSED --> [*]
-
-  note right of ERP_PLEDGED
-    Pub/Sub: order.execution.stage
-    correlationId in every log
-  end note
-```
-
-| Lifecycle state | External system | Code artifact |
-|-----------------|-----------------|---------------|
-| `ERP_PLEDGE_PENDING` / `ERP_PLEDGED` | SAP | `execution/integrations.ts` |
-| `WMS_WAVE_RELEASED` | Manhattan | `execution/integrations.ts` |
-| `WES_ALLOCATED` | AutoStore, Vanderlande, Locus, Schaefer, Rapyuta | `order-pipeline.ts` (`wesVendor`) |
-| `TMS_RATED` | Blue Yonder | `execution/integrations.ts` |
-| `ERP_CLOSED` | SAP close loop | `execution/integrations.ts` |
-| Persisted (structured) | SQL DB | Tenant-scoped order tables |
-| Persisted (JSON) | MongoDB | Stage events, partner raw payloads |
-| Nike handoff | GCP transforms | In-house service protocol envelopes |
+| State | System | Code |
+|-------|--------|------|
+| `ERP_PLEDGED` | SAP | `integrations.ts` |
+| `WMS_WAVE_RELEASED` | Manhattan | `releaseManhattanWave(waveTier, queueRank)` |
+| `WES_ALLOCATED` | WES vendor | `order-pipeline.ts` |
+| `TMS_RATED` | Blue Yonder | `integrations.ts` |
+| `ERP_CLOSED` | SAP | `closeSapOrderLoop` |
 
 ---
 
-## Workflow C — Warehouse floor (manual + automation)
+### Workflow C — Warehouse floor
 
-Maps HTTP endpoints to physical or robotic actions. **Artifact:** `warehouse-tasks/controllers.ts`, `warehouse-tasks/routes.ts`.
+`warehouse-tasks/routes.ts` — wave, pick, pack, auto-pick, labels (ZPL/PDF), ship.
+
+---
+
+### Workflow D — Inventory & OS&D
+
+`inventory/services.ts` — cycle count, daily reconciliation, adjustments with reason codes → topic `inventory.adjustment.posted` → SQL + MongoDB audit payload.
+
+---
+
+### CI/CD — Docker images, multi-tenant gates, and safe merges to `main`
 
 ```mermaid
 flowchart TB
-  OP[Operator / WMS UI] --> API[OmniRoute API]
-  AMR[Locus / Rapyuta AMR] --> API
-  SCAN[Inline scanner] --> API
-
-  API --> W1[POST /wave/release\nManhattan wave]
-  API --> W2[POST /pick\nPick task]
-  API --> W3[POST /pack/verify\nPack station]
-  API --> W4[POST /stage\nStaging lane]
-  API --> W5[POST /load/trailer\nFluid load]
-  API --> W6[POST /auto-pick\nAMR mission]
-  API --> W7[POST /auto-pack\nPack machine]
-  API --> W8[POST /labels/print\nZPL or PDF stream]
-  API --> W9[POST /ship\nShip confirm]
-
-  W1 & W2 & W3 & W4 & W5 --> MHT[Manhattan WMS]
-  W6 --> WES[WES robotics]
-  W7 --> AUTO[Automation line]
-  W8 --> LBL[Label printer mock]
-  W9 --> TMS2[TMS / carrier handoff]
+  PR[Pull request] --> PAR[Parallel checks]
+  PAR --> L[Lint build]
+  PAR --> TF[Terraform]
+  PAR --> H[Helm]
+  PAR --> D[Docker build]
+  PAR --> TV[Trivy]
+  PAR --> MT[Multi-tenant smoke]
+  PAR --> GATE[all-checks job]
+  GATE -->|pass| MAIN[Merge main]
+  MAIN --> PUSH[Push image ghcr.io]
+  PUSH --> CAN[Canary 10%]
+  CAN --> HG{Health SLO}
+  HG -->|fail| RB[helm rollback]
+  HG -->|pass| FULL[100% traffic]
 ```
 
----
-
-## Workflow D — Inventory, reconciliation, and OS&D (Finance / Legal)
-
-**Artifacts:** `inventory/services.ts`, `inventory/routes.ts`, topic `inventory.adjustment.posted`, Splunk OS&D panel.
-
-```mermaid
-flowchart TB
-  WH[Warehouse operator] --> CC[POST /inventory/cycle-count\nPerpetual baseline]
-  FIN[Finance scheduler] --> DR[POST /inventory/reconciliation/daily\nWMS vs SAP ledger]
-  QA[QA / inventory control] --> ADJ[POST /inventory/adjustments\nreasonCode validated]
-
-  CC --> BASE[(perpetualBaseline map)]
-  DR --> CMP{WMS qty = SAP qty?}
-  CMP -->|mismatch| REP[Reconciliation report]
-  ADJ --> OSD{Type: overage | shortage | damage}
-  OSD --> AUD[AuditLedgerPayload\nfinanceReviewRequired · legalHold]
-  AUD --> PS[(Topic: inventory.adjustment.posted)]
-  AUD --> SQL[(SQL inventory_ledger\nstructured rows)]
-  AUD --> MONGO[(MongoDB audit document\nfinanceReviewRequired · legalHold)]
-  PS --> SPL[Splunk panel_osd_variance\ndashboard JSON]
-```
-
-| Adjustment type | Valid reason codes (sample) | Audit flags |
-|-----------------|----------------------------|-------------|
-| `overage` | `RCV-OVER`, `CNT-OVER`, `ADJ-OVER` | Finance review if \|Δ\| > 10 |
-| `shortage` | `PICK-SHORT`, `CNT-SHORT`, `SHRINK` | Finance review if \|Δ\| > 10 |
-| `damage` | `DMG-FREIGHT`, `DMG-HANDLING`, `DMG-QA` | `legalHold` on damage codes |
-
----
-
-## CI/CD — Docker images, multi-tenant gates, and safe merges to `main`
-
-Multiple engineers work in parallel on feature branches. **Wrong code must not reach `main`** — every pull request runs the same checks; only green builds merge. **`main`** alone builds/pushes the **Docker image** and deploys.
-
-```mermaid
-flowchart TB
-  subgraph pr [Pull request / feature branch]
-    DEV[Engineer pushes branch]
-    DEV --> PAR[Parallel checks]
-    PAR --> L[Lint + TypeScript build]
-    PAR --> TF[Terraform validate]
-    PAR --> H[Helm lint + template]
-    PAR --> D[Docker build\nno push]
-    PAR --> TV[Trivy CRITICAL/HIGH]
-    PAR --> MT[Multi-tenant smoke\nx-tenant-id required]
-    L & TF & H & D & TV & MT --> GATE{CI gate\nall-checks job}
-    GATE -->|fail| BLOCK[Merge blocked]
-    GATE -->|pass| MERGE[Merge to main]
-  end
-
-  subgraph mainflow [main branch only]
-    MERGE --> PUSH[Push Docker image\nghcr.io/omniroute-api:sha]
-    PUSH --> CAN[Canary 10%]
-    CAN --> HG{Health SLO}
-    HG -->|fail| RB[helm rollback]
-    HG -->|pass| FULL[Promote 100%]
-  end
-```
-
-| Check | What it catches | Artifact |
-|-------|-----------------|----------|
-| **Lint & compile** | TypeScript errors, broken imports | `npm run build` in `3-saas-application` |
-| **Terraform** | Invalid IaC before any apply | `1-iaas-infra/terraform` |
-| **Helm** | Broken Kubernetes templates | `2-paas-platform/helm/omniroute-api` |
-| **Docker build** | Dockerfile / runtime packaging failures | `3-saas-application/Dockerfile` |
-| **Trivy** | Critical/high vulnerabilities in the image | Fails pipeline on CRITICAL,HIGH |
-| **Multi-tenant smoke** | Missing `x-tenant-id`, tenant mix-ups | `scripts/ci-tenant-smoke.mjs` |
-| **CI gate (`all-checks`)** | Any job skipped or failed | Required for merge to `main` |
-
-### Multi-engineer workflow
-
-1. Create a branch from `main`, open a **pull request**.
-2. GitHub Actions runs all checks in parallel (`concurrency` cancels stale runs on the same branch).
-3. Reviewers require the **`CI gate (merge blocker)`** job green before merge.
-4. After merge to **`main`**, workflow pushes `ghcr.io/bharat2476/omniroute-api:${{ github.sha }}` and runs canary → health gate → promote or rollback.
-
-Local multi-tenant test (same as CI):
+| Check | Artifact |
+|-------|----------|
+| Lint & compile | `npm run build` |
+| Docker build | `3-saas-application/Dockerfile` |
+| Trivy | Fails on CRITICAL,HIGH |
+| Multi-tenant | `scripts/ci-tenant-smoke.mjs` |
+| Merge gate | Job `all-checks` — require on `main` |
 
 ```bash
 cd 3-saas-application
 npm run test:tenant
 ```
 
-Jenkins mirror: [`Jenkinsfile`](Jenkinsfile) runs the same parallel stages for enterprises using Jenkins instead of GitHub Actions.
-
-| Deploy stage | When | Behavior |
-|--------------|------|----------|
-| Docker push | `main` push only | Immutable image tag = git SHA |
-| Canary | After push | 10% traffic on new image |
-| Rollback | Health gate fail | `helm rollback` |
-| Promote | Canary pass | 100% traffic |
+Docker push and deploy run on **`main` push only** (`build-push`, `deploy-canary`, `promote-full` jobs in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)).
 
 ---
 
-## Pub/Sub topic catalog (SaaS artifacts)
+### Pub/Sub topic catalog
 
-| Topic | Publisher artifact | Subscriber / consumer |
-|-------|-------------------|------------------------|
+| Topic | Publisher | Consumer |
+|-------|-----------|----------|
 | `pim.catalog.delta` | `catalog/pim-broker-client.ts` | `catalog/warehouse-subscriber.ts` |
-| `order.execution.stage` | `execution/order-pipeline.ts` | Observability / downstream analytics |
-| `warehouse.task.completed` | *(reserved)* | WMS confirmation workers |
-| `inventory.adjustment.posted` | `inventory/services.ts` | Finance audit, Splunk |
+| `order.execution.stage` | `execution/order-pipeline.ts` | Observability |
+| `inventory.adjustment.posted` | `inventory/services.ts` | Finance / Splunk |
 
 ---
 
-## Three-pillar topology (summary)
+### Three-pillar topology (summary)
 
-| Pillar | Path | Responsibility |
-|--------|------|----------------|
-| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | AWS VPC (private isolation), EKS + Karpenter; **production data = SQL + MongoDB on GCP path, not PostgreSQL** |
-| **PaaS** | [`2-paas-platform/`](2-paas-platform/) | Helm HPA (queue-depth), Istio tenant rate limits, OTel → Splunk dashboards |
-| **SaaS** | [`3-saas-application/`](3-saas-application/) | Catalog, order execution, warehouse tasks, inventory OS&D |
-
----
-
-## Cross-functional collaboration
-
-### Engineering & Platform
-
-- **Global vs Edge:** Global cloud handles OMS/PIM/SAP/Manhattan/TMS orchestration for every ecosystem on one WMS; **Edge on-prem** handles site-specific WES vendors with millisecond-scale floor latency (see [Integration topology: Global vs Edge](#integration-topology-global-vs-edge)).
-- **Dual datastore:** **MongoDB** for JSON/non-structured integration artifacts; **SQL** for structured facts — **not PostgreSQL** (see [Data platform](#data-platform-mongodb-sql-and-gcp-nike-protocol-bridge)).
-- **GCP** translates all partner traffic **to/from Nike in-house service protocols** before/after the Global API.
-- **Shared resources** (one EKS, pooled SQL + MongoDB, shared GCP transforms, OTel/Splunk, Karpenter spot pools) keep marginal tenant cost low—see [Shared resources and cost efficiency](#shared-resources-and-cost-efficiency).
-- **Multi-region** Terraform/Helm parameters isolate blast radius; surviving regions continue Global processing while Edge warehouses operate autonomously until sync resumes.
-- **Pub/Sub decoupling** (`3-saas-application/src/pubsub/`) isolates PIM catalog floods from order pipelines — critical for **Black Friday** spikes when SKU deltas arrive in millions.
-- **Karpenter + HPA** scale on CPU *and* `omniroute_pubsub_backlog_depth` (see [`2-paas-platform/helm/omniroute-api/values.yaml`](2-paas-platform/helm/omniroute-api/values.yaml)).
-- **CI/CD:** Docker image build on every PR; push to registry on **`main` only**; **multi-tenant smoke tests** and **`all-checks` merge gate** so multiple engineers cannot merge broken code (see [CI/CD](#cicd--docker-images-multi-tenant-gates-and-safe-merges-to-main)).
-- **Canary + automated rollback** in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) and [`Jenkinsfile`](Jenkinsfile) when post-deploy P99 latency or error rate breaches SLO.
-
-### Operations
-
-- **Global** operators monitor Splunk dashboards for tenant latency and WES error rates across the shared Manhattan estate.
-- **Edge** operators interact only with floor endpoints below; robotics traffic never leaves the warehouse LAN.
-
-| Endpoint | Physical / automation action |
-|----------|------------------------------|
-| `POST /warehouse-tasks/wave/release` | Release WMS wave |
-| `POST /warehouse-tasks/pick` | Manual pick task |
-| `POST /warehouse-tasks/auto-pick` | Locus / Rapyuta AMR mission |
-| `POST /warehouse-tasks/auto-pack` | Inline scanner → pack machine |
-| `POST /warehouse-tasks/labels/print` | ZPL/PDF label stream |
-| `POST /warehouse-tasks/ship` | Ship confirm |
-
-Splunk panels ([`2-paas-platform/splunk/dashboard-omniroute-operations.json`](2-paas-platform/splunk/dashboard-omniroute-operations.json)): tenant latency, WES vendor error %, P99 throughput, OS&D audit table.
-
-### Finance & Legal
-
-- **OS&D adjustments** require validated `reasonCode` per variance type (`overage`, `shortage`, `damage`).
-- Each adjustment emits an **audit ledger payload** with `financeReviewRequired` and `legalHold` flags for SAP alignment.
-- **Daily reconciliation** compares WMS physical counts vs SAP ledger; mismatches surface before period close.
-- **Multi-tenant telemetry** tags `tenant.id` in OTel — supporting data governance and noisy-neighbor isolation at the gateway.
+| Pillar | Responsibility |
+|--------|----------------|
+| **IaaS** | VPC, EKS, Karpenter |
+| **PaaS** | Helm, Istio, OTel, Splunk |
+| **SaaS** | Catalog, execution, warehouse, inventory APIs + dev portal |
 
 ---
 
-## Quick start
+### Quick start
 
 ```powershell
 cd C:\Users\agarw\Integrations\3-saas-application
@@ -642,29 +439,40 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:8080/ui/guide** for the Product Guide, or:
-
 ```bash
 curl -X POST http://localhost:8080/api/v1/execution/orders \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: tenant-acme" \
   -H "x-correlation-id: $(uuidgen)" \
-  -d '{"omsOrderRef":"OMS-10042","wesVendor":"Locus"}'
+  -d '{"omsOrderRef":"OMS-10042","shipUrgency":"rush","wesVendor":"Locus"}'
 ```
 
 ---
 
-## Project layout
+### Project layout
 
 ```
-├── 1-iaas-infra/terraform/     # VPC, EKS, Karpenter (optional rds.tf = Postgres sample only)
-├── 2-paas-platform/            # Helm, Istio, OTel, Splunk, Karpenter YAML
-├── 3-saas-application/src/     # Express API domains + dev portal
+├── 1-iaas-infra/terraform/     # VPC, EKS, Karpenter (optional rds.tf sample)
+├── 2-paas-platform/            # Helm, Istio, OTel, Splunk
+├── 3-saas-application/         # Express API, dev-portal/, scripts/ci-tenant-smoke.mjs
 ├── .github/workflows/deploy.yml
 ├── Jenkinsfile
 ├── AGENTS.md
-└── README.md                   # This file — architecture + workflow diagrams
+└── README.md
 ```
+
+Prefer a plain-language walkthrough? See **[Non Tech Persona →](#non-tech-persona)**.
+
+[↑ Back to Choose your view](#choose-your-view)
+
+---
+
+## Documentation personas
+
+| Persona | Description |
+|---------|-------------|
+| **[Non Tech Persona](#non-tech-persona)** | Customer order journey, rush vs standard, Global/Edge, UI demo paths — no code required |
+| **[Tech Persona](#tech-persona)** | Architecture, workflows, artifacts, CI/CD, APIs, local runbook |
 
 ---
 
