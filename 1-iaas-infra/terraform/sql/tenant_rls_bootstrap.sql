@@ -1,4 +1,6 @@
--- OmniRoute-Core multi-tenant PostgreSQL bootstrap
+-- OPTIONAL AWS REFERENCE SAMPLE ONLY — production integration did NOT use PostgreSQL.
+-- Production: SQL DB (structured) + MongoDB (JSON). See repo README.md.
+-- Sample: multi-tenant PostgreSQL bootstrap for AWS RDS prototypes.
 -- Strategy: dedicated schemas for enterprise tenants + RLS on shared operational tables
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

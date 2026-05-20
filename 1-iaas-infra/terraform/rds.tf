@@ -1,4 +1,6 @@
-# RDS PostgreSQL — shared platform DB with schema-per-tenant + RLS for ironclad isolation.
+# OPTIONAL AWS REFERENCE SAMPLE ONLY — not used in production OmniRoute/Nike integrations.
+# Production uses SQL (structured) + MongoDB (JSON). See README.md "Data platform".
+# RDS PostgreSQL — sample pattern for schema-per-tenant + RLS on AWS.
 
 resource "aws_db_subnet_group" "core" {
   name       = "${local.name_prefix}-db-subnets"

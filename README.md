@@ -6,6 +6,68 @@ Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/In
 
 **Local dev UI:** [http://localhost:8080/](http://localhost:8080/) (after `npm run dev` in `3-saas-application`)
 
+> **Production data platform (as integrated):** **MongoDB** for JSON and non-structured payloads, a **SQL database** for structured transactional data, and **GCP** as the translation layer to **Nike in-house service protocols**. **PostgreSQL was not used** for this integration. Files under `1-iaas-infra/terraform/rds.tf` and `sql/tenant_rls_bootstrap.sql` are optional AWS reference samples only—not the live datastore design.
+
+---
+
+## Data platform: MongoDB, SQL, and GCP (Nike protocol bridge)
+
+Integrations persist and move data by **shape**, not a single monolithic database.
+
+| Store | Data profile | Examples in the supply chain flow |
+|-------|--------------|-----------------------------------|
+| **MongoDB** | Semi-structured / JSON — catalog deltas, raw partner payloads, OS&D audit documents, pub/sub message bodies, transformation snapshots | PIM bulk attributes, WES telemetry blobs, legal audit exports |
+| **SQL DB** | Structured — relational facts with strict keys and reporting joins | Order headers/lines, inventory quantities, reconciliation outcomes, tenant registry |
+| **GCP** | **Protocol translation** — transform messages **to and from** Nike in-house service contracts | Canonical OmniRoute events ↔ Nike internal APIs/topics |
+
+**PostgreSQL was not part of the production integration.** Structured data lived in **SQL** (enterprise-standard RDBMS per ops policy); unstructured data lived in **MongoDB**. Do not map the live design to `rds.tf` unless you are prototyping on AWS.
+
+```mermaid
+flowchart TB
+  subgraph partners [External ecosystems]
+    OMS_P[OMS]
+    PIM_P[PIM]
+    SAP_P[SAP]
+    MHT_P[Manhattan WMS]
+    WES_P[WES vendors]
+  end
+
+  subgraph gcp [GCP — translation and transformation layer]
+    PUB[Pub/Sub or Eventarc ingress]
+    CF[Cloud Functions / Dataflow transforms]
+    MAP[Protocol adapters\nNike in-house schema mapping]
+    EGRESS[Egress to Nike services]
+  end
+
+  subgraph nike [Nike in-house services]
+    NIKE_API[Internal service APIs]
+    NIKE_BUS[Enterprise message bus]
+  end
+
+  subgraph global_api [Global integration API]
+    OR[OmniRoute / Integration API\n3-saas-application]
+  end
+
+  subgraph data [Dual persistence — not PostgreSQL]
+    MONGO[(MongoDB\nJSON · events · audits)]
+    SQL[(SQL DB\nstructured orders · inventory)]
+  end
+
+  partners <-->|partner protocols| gcp
+  gcp <-->|to / from Nike contracts| nike
+  gcp <--> OR
+  OR --> MONGO
+  OR --> SQL
+  MAP --> MONGO
+  MAP --> SQL
+```
+
+| Direction | Responsibility |
+|-----------|----------------|
+| **Inbound** (partner → Nike) | GCP normalizes OMS/PIM/WMS payloads, validates, writes structured rows to **SQL**, archives raw JSON to **MongoDB**, publishes Nike-shaped messages |
+| **Outbound** (Nike → partner) | GCP reads **SQL** state + **MongoDB** context, applies Nike protocol envelopes, delivers to Manhattan/SAP/TMS endpoints |
+| **Observability** | Correlation IDs span GCP transforms, API logs, SQL transaction IDs, and MongoDB document `_id` |
+
 ---
 
 ## Integration topology: Global vs Edge
@@ -26,15 +88,17 @@ OmniRoute-Core ships as **two integration components**. They share contracts (`x
 ```mermaid
 flowchart TB
   subgraph regions [Multi-region Global — disruption isolation]
-    R1[Region US-East\nEKS + RDS replica]
-    R2[Region US-West\nEKS + RDS replica]
-    R3[Region EU-Central\nEKS + RDS replica]
+    R1[Region US-East\nEKS + SQL replica]
+    R2[Region US-West\nEKS + SQL replica]
+    R3[Region EU-Central\nEKS + SQL replica]
   end
 
   subgraph global [Global integration — cloud shared services]
     GAPI[OmniRoute Global API\nexecution · catalog · inventory]
     GPS[Shared Pub/Sub\npim.catalog.delta · order.execution.stage]
-    GRDS[(Shared PostgreSQL\nRLS + tenant schemas)]
+    GCP_T[GCP translation layer\nNike protocol mapping]
+    SQL_D[(SQL DB — structured)]
+    MONGO_D[(MongoDB — JSON / events)]
     GW_GLOBAL[Istio + tenant rate limit\n2-paas-platform]
   end
 
@@ -45,11 +109,13 @@ flowchart TB
     HELM_SH[One Helm chart — HPA scale-to-zero friendly]
   end
 
-  OMS & PIM & SAP & MHT_CLOUD[Manhattan central] & TMS --> GW_GLOBAL
-  GW_GLOBAL --> GAPI
-  GAPI --> GPS --> GRDS
+  OMS & PIM & SAP & MHT_CLOUD[Manhattan central] & TMS --> GCP_T
+  GCP_T --> GW_GLOBAL --> GAPI
+  GAPI --> GPS
+  GAPI --> SQL_D & MONGO_D
   regions --> global
   shared --> global
+  GCP_T --> NIKE[Nike in-house services]
 
   subgraph edge_wh1 [Edge — Warehouse A on-prem]
     E1[Edge API / agent\nwarehouse-tasks]
@@ -79,7 +145,9 @@ Platform engineering **consolidates infrastructure** so tenants and brands share
 | **EKS cluster** | One regional control plane; many workloads per cluster | `1-iaas-infra/terraform/eks.tf` |
 | **Karpenter NodePools** | Mix **spot** + on-demand; scale nodes to zero when queues drain | `2-paas-platform/karpenter/nodepool-workloads.yaml` |
 | **Helm release** | Single `omniroute-api` chart for all tenants; reuse image + PDB | `2-paas-platform/helm/omniroute-api/` |
-| **PostgreSQL** | One RDS instance; **RLS + schemas** replace per-tenant databases | `terraform/rds.tf`, `sql/tenant_rls_bootstrap.sql` |
+| **SQL DB** | One shared structured store; tenant/partition strategy replaces per-tenant DB sprawl | Production SQL tier (not PostgreSQL) |
+| **MongoDB** | Shared cluster for JSON payloads; indexed by `tenantId` + `correlationId` | Production MongoDB tier |
+| **GCP transforms** | Reusable Cloud Functions / pipelines — one translation codebase for all regions | GCP project per region or shared multi-region |
 | **Observability** | Shared OTel collectors → Splunk (no per-warehouse Splunk index sprawl) | `otel/daemonset-collector.yaml`, `splunk/dashboard-*.json` |
 | **CI/CD** | One pipeline validates all pillars before any deploy | `.github/workflows/deploy.yml`, `Jenkinsfile` |
 | **Global API** | Catalog and order logic written once; Edge only runs thin floor adapters | `3-saas-application/src/` |
@@ -94,29 +162,32 @@ Infrastructure is **replicated across regions** so an AZ or regional outage does
 
 | Principle | Implementation |
 |-----------|----------------|
-| **Regional isolation** | Separate VPC + EKS + RDS per region (`terraform/vpc.tf`, `variables.tf` `aws_region`) |
+| **Regional isolation** | Separate VPC + EKS + **SQL/MongoDB** replicas per region (`terraform/vpc.tf`, `variables.tf` `aws_region`) |
 | **Multi-AZ inside region** | Private, database, and NAT subnets span 3 AZs (`availability_zones`) |
 | **Global traffic** | Corporate OMS/PIM/SAP connect to the **nearest healthy region**; Global API remains active in surviving regions |
 | **Edge unaffected by cloud region loss** | On-prem Edge keeps pick/pack/ship running; syncs catalog/order state when Global is reachable |
-| **Data** | PostgreSQL with multi-AZ in prod; cross-region read replicas (extend `rds.tf` per DR playbook) |
+| **Data** | **SQL** primaries with multi-AZ; **MongoDB** replica sets; cross-region read replicas; GCP topics replicated per region |
 
 ```mermaid
 flowchart LR
   subgraph US_East [us-east-1]
     EKS1[EKS Global]
-    RDS1[(RDS primary)]
+    SQL1[(SQL primary)]
+    MG1[(MongoDB)]
   end
   subgraph US_West [us-west-2]
     EKS2[EKS Global]
-    RDS2[(RDS replica)]
+    SQL2[(SQL replica)]
+    MG2[(MongoDB)]
   end
   subgraph EU [eu-central-1]
     EKS3[EKS Global]
-    RDS3[(RDS replica)]
+    SQL3[(SQL replica)]
+    MG3[(MongoDB)]
   end
 
-  OMS_G[Corporate OMS] -->|route nearest| EKS1 & EKS2 & EKS3
-  RDS1 -.->|async replication| RDS2 & RDS3
+  OMS_G[Corporate OMS] -->|route nearest GCP + EKS| EKS1 & EKS2 & EKS3
+  SQL1 -.->|async replication| SQL2 & SQL3
 
   WH_EAST[Edge WH East on-prem] --> EKS1
   WH_WEST[Edge WH West on-prem] --> EKS2
@@ -137,7 +208,7 @@ Scale and resilience come from **versioned configs** checked into this repo. Ope
 | Helm `autoscaling.maxReplicas` | API pod ceiling | Order API throughput |
 | Helm `queueDepthMetric.targetAverageValue` | HPA on pub/sub backlog | Scale before queue latency grows |
 | Istio token bucket | Per-tenant `max_tokens` | Fair sharing on shared gateway |
-| `tenant_schema_count` + RLS | DB isolation model | Tenant growth without new RDS |
+| SQL partitioning + MongoDB collections | Tenant isolation model | Tenant growth without new database clusters |
 | Canary `weight` in `deploy.yml` | Release risk | Safe rollout with auto-rollback |
 
 ```mermaid
@@ -145,7 +216,9 @@ flowchart LR
   ENG[Platform engineer] --> TF[Terraform vars\n1-iaas-infra]
   ENG --> HELM[Helm values\n2-paas-platform]
   ENG --> APP[Env + HPA metrics\n3-saas-application]
-  TF --> AWS[AWS EKS / RDS / VPC]
+  TF --> AWS[AWS EKS / VPC + data tiers]
+  ENG --> GCP_CFG[GCP transform configs]
+  GCP_CFG --> GCP_RUN[GCP Nike protocol bridge]
   HELM --> K8S[Kubernetes workloads]
   APP --> K8S
   METRICS[Splunk / OTel SLOs] -->|feedback| ENG
@@ -191,7 +264,9 @@ flowchart TB
   subgraph iaas [1-iaas-infra — AWS]
     VPC["VPC multi-AZ\nterraform/vpc.tf"]
     EKS["EKS private API\nterraform/eks.tf"]
-    RDS["RDS PostgreSQL 16\nterraform/rds.tf\nsql/tenant_rls_bootstrap.sql"]
+    GCP_L["GCP translation\nNike in-house protocols"]
+    SQL_DB["SQL DB — structured\ntenant orders · inventory"]
+    MONGO_DB["MongoDB — JSON\nevents · audit payloads"]
   end
 
   subgraph cicd [CI/CD artifacts]
@@ -207,7 +282,8 @@ flowchart TB
   HELM --> KARP
   EKS --> HELM
   VPC --> EKS
-  RDS --> API
+  GCP_L <--> API
+  API --> SQL_DB & MONGO_DB
   API --> OTEL --> SPL
   GHA & JEN --> HELM
   GHA & JEN --> API
@@ -215,7 +291,7 @@ flowchart TB
 
 | Layer | Path | Key artifacts |
 |-------|------|----------------|
-| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | `terraform/vpc.tf`, `eks.tf`, `karpenter.tf`, `rds.tf`, `sql/tenant_rls_bootstrap.sql`, `outputs.tf` |
+| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | `terraform/vpc.tf`, `eks.tf`, `karpenter.tf`, `outputs.tf` *(optional `rds.tf` = AWS Postgres sample only)* |
 | **PaaS** | [`2-paas-platform/`](2-paas-platform/) | `helm/omniroute-api/`, `gateway/istio/envoyfilter-tenant-ratelimit.yaml`, `otel/daemonset-collector.yaml`, `splunk/dashboard-omniroute-operations.json`, `karpenter/nodepool-workloads.yaml` |
 | **SaaS** | [`3-saas-application/`](3-saas-application/) | `src/pubsub/`, `src/catalog/`, `src/execution/`, `src/warehouse-tasks/`, `src/inventory/`, `src/shared/`, `Dockerfile` |
 | **CI/CD** | repo root | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), [`Jenkinsfile`](Jenkinsfile) |
@@ -237,19 +313,26 @@ sequenceDiagram
   participant MHT as Manhattan WMS
   participant WES as WES (Locus/Rapyuta/…)
   participant TMS as Blue Yonder TMS
-  participant RDS as PostgreSQL<br/>tenant_rls_bootstrap.sql
+  participant GCP as GCP translation<br/>Nike protocol mapping
+  participant SQL as SQL DB<br/>structured data
+  participant MONGO as MongoDB<br/>JSON / events
+  participant NIKE as Nike in-house<br/>services
   participant OTEL as OTel Collector<br/>daemonset-collector.yaml
   participant SPL as Splunk<br/>dashboard JSON
 
   Note over PIM,PS: Catalog path (async, non-blocking)
   participant PIM as PIM
-  PIM->>API: POST /api/v1/catalog/delta
+  PIM->>GCP: Partner catalog JSON
+  GCP->>NIKE: Nike-shaped catalog event
+  GCP->>MONGO: Store raw delta + transform snapshot
+  GCP->>API: POST /api/v1/catalog/delta
   API->>PS: publish pim.catalog.delta
   PS-->>API: CatalogWarehouseSubscriber<br/>warehouse-subscriber.ts
   PS->>MHT: Ingest SKU cache (per node)
 
   Note over OMS,SPL: Order execution path
-  OMS->>Edge: Create / update order (x-tenant-id)
+  OMS->>GCP: Order create (partner protocol)
+  GCP->>API: Normalized order + x-tenant-id
   Edge->>API: POST /api/v1/execution/orders
   API->>SAP: pledgeSapFinancial()<br/>integrations.ts
   API->>PS: publish order.execution.stage ERP_PLEDGED
@@ -258,7 +341,10 @@ sequenceDiagram
   API->>TMS: rateBlueYonderFreight()
   API->>PS: publish order.execution.stage TMS_RATED
   API->>SAP: closeSapOrderLoop()
-  API->>RDS: Persist order + tenant RLS
+  API->>SQL: Persist order facts
+  API->>MONGO: Persist stage payloads + audit JSON
+  API->>GCP: Outbound Nike protocol close-out
+  GCP->>NIKE: Financial + fulfillment confirmation
   API->>OTEL: Traces / metrics (tenant.id)
   OTEL->>SPL: Latency · WES errors · P99
 
@@ -321,7 +407,9 @@ stateDiagram-v2
 | `WES_ALLOCATED` | AutoStore, Vanderlande, Locus, Schaefer, Rapyuta | `order-pipeline.ts` (`wesVendor`) |
 | `TMS_RATED` | Blue Yonder | `execution/integrations.ts` |
 | `ERP_CLOSED` | SAP close loop | `execution/integrations.ts` |
-| Persisted | PostgreSQL RLS | `1-iaas-infra/terraform/sql/tenant_rls_bootstrap.sql` |
+| Persisted (structured) | SQL DB | Tenant-scoped order tables |
+| Persisted (JSON) | MongoDB | Stage events, partner raw payloads |
+| Nike handoff | GCP transforms | In-house service protocol envelopes |
 
 ---
 
@@ -370,7 +458,8 @@ flowchart TB
   ADJ --> OSD{Type: overage | shortage | damage}
   OSD --> AUD[AuditLedgerPayload\nfinanceReviewRequired · legalHold]
   AUD --> PS[(Topic: inventory.adjustment.posted)]
-  AUD --> RDS[(tenant_shared.inventory_ledger\nRLS policy)]
+  AUD --> SQL[(SQL inventory_ledger\nstructured rows)]
+  AUD --> MONGO[(MongoDB audit document\nfinanceReviewRequired · legalHold)]
   PS --> SPL[Splunk panel_osd_variance\ndashboard JSON]
 ```
 
@@ -424,7 +513,7 @@ flowchart LR
 
 | Pillar | Path | Responsibility |
 |--------|------|----------------|
-| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | AWS VPC (private isolation), EKS + Karpenter, RDS PostgreSQL with schema/RLS tenancy |
+| **IaaS** | [`1-iaas-infra/`](1-iaas-infra/) | AWS VPC (private isolation), EKS + Karpenter; **production data = SQL + MongoDB on GCP path, not PostgreSQL** |
 | **PaaS** | [`2-paas-platform/`](2-paas-platform/) | Helm HPA (queue-depth), Istio tenant rate limits, OTel → Splunk dashboards |
 | **SaaS** | [`3-saas-application/`](3-saas-application/) | Catalog, order execution, warehouse tasks, inventory OS&D |
 
@@ -435,7 +524,9 @@ flowchart LR
 ### Engineering & Platform
 
 - **Global vs Edge:** Global cloud handles OMS/PIM/SAP/Manhattan/TMS orchestration for every ecosystem on one WMS; **Edge on-prem** handles site-specific WES vendors with millisecond-scale floor latency (see [Integration topology: Global vs Edge](#integration-topology-global-vs-edge)).
-- **Shared resources** (one EKS, one RDS with RLS, shared OTel/Splunk, Karpenter spot pools) keep marginal tenant cost low—see [Shared resources and cost efficiency](#shared-resources-and-cost-efficiency).
+- **Dual datastore:** **MongoDB** for JSON/non-structured integration artifacts; **SQL** for structured facts — **not PostgreSQL** (see [Data platform](#data-platform-mongodb-sql-and-gcp-nike-protocol-bridge)).
+- **GCP** translates all partner traffic **to/from Nike in-house service protocols** before/after the Global API.
+- **Shared resources** (one EKS, pooled SQL + MongoDB, shared GCP transforms, OTel/Splunk, Karpenter spot pools) keep marginal tenant cost low—see [Shared resources and cost efficiency](#shared-resources-and-cost-efficiency).
 - **Multi-region** Terraform/Helm parameters isolate blast radius; surviving regions continue Global processing while Edge warehouses operate autonomously until sync resumes.
 - **Pub/Sub decoupling** (`3-saas-application/src/pubsub/`) isolates PIM catalog floods from order pipelines — critical for **Black Friday** spikes when SKU deltas arrive in millions.
 - **Karpenter + HPA** scale on CPU *and* `omniroute_pubsub_backlog_depth` (see [`2-paas-platform/helm/omniroute-api/values.yaml`](2-paas-platform/helm/omniroute-api/values.yaml)).
@@ -489,7 +580,7 @@ curl -X POST http://localhost:8080/api/v1/execution/orders \
 ## Project layout
 
 ```
-├── 1-iaas-infra/terraform/     # VPC, EKS, Karpenter IRSA, RDS + RLS SQL
+├── 1-iaas-infra/terraform/     # VPC, EKS, Karpenter (optional rds.tf = Postgres sample only)
 ├── 2-paas-platform/            # Helm, Istio, OTel, Splunk, Karpenter YAML
 ├── 3-saas-application/src/     # Express API domains + dev portal
 ├── .github/workflows/deploy.yml
