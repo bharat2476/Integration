@@ -4,7 +4,22 @@
 
 Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration)
 
-**Local dev UI:** [http://localhost:8080/](http://localhost:8080/) (after `npm run dev` in `3-saas-application`)
+**Local dev UI:** [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) (after `npm run dev` in `3-saas-application`)
+
+### Non Tech Persona
+
+Open the **Product Guide** first — plain-language overview, step-by-step walkthrough, and links to every demo screen: [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide)
+
+| Page | URL |
+|------|-----|
+| **Product Guide** (start here) | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| Overview (API console) | [http://localhost:8080/](http://localhost:8080/) → redirects to Product Guide |
+| Order execution | [http://localhost:8080/ui/orders](http://localhost:8080/ui/orders) |
+| PIM catalog | [http://localhost:8080/ui/catalog](http://localhost:8080/ui/catalog) |
+| Warehouse tasks | [http://localhost:8080/ui/warehouse](http://localhost:8080/ui/warehouse) |
+| Inventory & OS&D | [http://localhost:8080/ui/inventory](http://localhost:8080/ui/inventory) |
+| Global / Edge / Data | [http://localhost:8080/ui/platform](http://localhost:8080/ui/platform) |
+| Health & metrics | [http://localhost:8080/ui/health](http://localhost:8080/ui/health) |
 
 > **Production data platform (as integrated):** **MongoDB** for JSON and non-structured payloads, a **SQL database** for structured transactional data, and **GCP** as the translation layer to **Nike in-house service protocols**. **PostgreSQL was not used** for this integration. Files under `1-iaas-infra/terraform/rds.tf` and `sql/tenant_rls_bootstrap.sql` are optional AWS reference samples only—not the live datastore design.
 
@@ -565,7 +580,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:8080/** for the dev portal, or:
+Open **http://localhost:8080/ui/guide** for the Product Guide, or:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/execution/orders \
