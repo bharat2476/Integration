@@ -8,7 +8,7 @@ Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/In
 
 ### Non Tech Persona
 
-Open the **Product Guide** first — plain-language overview, step-by-step walkthrough, and links to every demo screen: [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide)
+Open the **Product Guide** first — step-by-step walkthrough, and links to every demo screen: [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide)
 
 ### Main objective — customer order to on-time delivery
 
