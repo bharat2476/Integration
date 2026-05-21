@@ -4,8 +4,8 @@
 
 | | |
 |--|--|
-| **Interview brief** | **[PRODUCT_BRIEF.md](PRODUCT_BRIEF.md)** — pitch, demo script, STAR stories, metrics |
-| **Live demo** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| **Product Brief** | **[PRODUCT_BRIEF.md](PRODUCT_BRIEF.md)** — pitch, demo script, STAR stories, metrics |
+| **Demo** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
 | **Repo** | [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration) |
 | **Engineering detail** | [docs/TECH.md](docs/TECH.md) |
 
@@ -17,11 +17,11 @@ cd 3-saas-application; npm install; npm run dev
 
 ## Product in one paragraph
 
-Customer orders touch **OMS, ERP, WMS, WES, WCS, and TMS**—each a complex system with its own APIs. OmniRoute-Core is the **orchestration layer** that chains those APIs so fulfillment runs end-to-end without manual re-entry. We built **IaaS + SaaS as a shared platform** for every warehouse, ship with **Docker via Jenkins**, and add **Terraform-managed VMs** on peak demand—not a one-off integration per building.
+Customer orders touch **OMS, ERP, WMS, WES, WCS, and TMS**—each a complex system with its own APIs. Product is the **orchestration layer** that chains those APIs so fulfillment runs end-to-end without manual re-entry. We built **IaaS + SaaS as a shared platform** for every warehouse, ship with **Docker via Jenkins**, and add **Terraform-managed VMs** on peak demand—not a one-off integration per building.
 
 ---
 
-## Why this matters (business)
+## Why this matters
 
 | Problem | Product answer |
 |---------|----------------|
@@ -33,7 +33,7 @@ Customer orders touch **OMS, ERP, WMS, WES, WCS, and TMS**—each a complex syst
 
 ---
 
-## How an order flows
+## Order Flow
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ flowchart LR
 
 ---
 
-## Demo (7 minutes)
+## Demo
 
 1. [Product Guide](http://localhost:8080/ui/guide) — narrative  
 2. [Orders](http://localhost:8080/ui/orders) — rush vs standard; show `tmsLoadId`  
@@ -84,11 +84,9 @@ flowchart LR
 4. [Inventory](http://localhost:8080/ui/inventory) — reconciliation / OS&D  
 5. [Platform](http://localhost:8080/ui/platform) — multi-DC platform view  
 
-Full script: **[PRODUCT_BRIEF.md § 7-minute demo](PRODUCT_BRIEF.md#7-minute-demo-script-use-in-interview)**
-
 ---
 
-## Outcomes I’d own as Director
+## Outcomes
 
 - SLA hit rate (rush vs standard)  
 - Integration reliability by stage  
