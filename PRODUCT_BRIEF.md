@@ -101,9 +101,3 @@ Engineers: [docs/TECH.md](docs/TECH.md) · In-app [Platform UI](http://localhost
 
 ---
 
-## Questions to ask the hiring manager
-
-- How is integration funding prioritized vs net-new channel features?  
-- What is the current SLA baseline for rush D2C?  
-- How many DCs share one WMS estate vs isolated?  
-- Where do product and platform engineering boundaries sit today?
