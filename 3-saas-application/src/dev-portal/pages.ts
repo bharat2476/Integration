@@ -6,7 +6,7 @@ const PAGES: Record<string, () => string> = {
     renderGuideShell(
       "guide",
       "Product Guide",
-      "What OmniRoute-Core does — for business, operations, and finance stakeholders. No technical background required.",
+      "Integration across OMS, ERP, WMS, WES, WCS, and TMS — many APIs, one orchestrated flow.",
       productGuideBody(),
       GUIDE_EXTRA_STYLES,
     ),
@@ -47,7 +47,7 @@ const PAGES: Record<string, () => string> = {
     renderShell(
       "orders",
       "Order execution",
-      "End-to-end customer order flow with rush vs standard priority. Each stage logs correlation ID, SLA, and wave tier.",
+      "OMS → ERP → WMS → WES → TMS via orchestrated APIs. Rush vs standard changes wave tier and freight.",
       `
     <section>
       <h2>Start pipeline</h2>
@@ -116,7 +116,7 @@ const PAGES: Record<string, () => string> = {
     renderShell(
       "warehouse",
       "Warehouse tasks",
-      "Edge on-prem style endpoints — manual floor work and automation (AMR, auto-pack, labels).",
+      "WMS, WES, and WCS APIs — waves, picks, robotics, staging, labels, ship confirm.",
       `
     <section>
       <h2>Manual WMS</h2>
@@ -165,13 +165,29 @@ const PAGES: Record<string, () => string> = {
   platform: () =>
     renderShell(
       "platform",
-      "Global / Edge / Data platform",
-      "How production was integrated — not the optional Terraform PostgreSQL sample.",
+      "Tech persona — systems & APIs",
+      "OMS · ERP · WMS · WES · WCS · TMS — multiple partner APIs orchestrated through OmniRoute-Core.",
       `
     <section>
-      <h2>Integration components</h2>
-      <p><strong>Global (cloud):</strong> Shared Manhattan WMS estate — OMS, PIM, SAP, TMS orchestration.</p>
-      <p><strong>Edge (on-prem):</strong> Per-warehouse WES vendors — low latency robotics and scanners.</p>
+      <h2>System landscape</h2>
+      <table class="timeline" style="width:100%;border-collapse:collapse;font-size:0.82rem">
+        <thead><tr><th style="border:1px solid #2a3a52;padding:0.4rem">Layer</th><th style="border:1px solid #2a3a52;padding:0.4rem">System</th><th style="border:1px solid #2a3a52;padding:0.4rem">Demo integration surface</th></tr></thead>
+        <tbody>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Sell</td><td>OMS + PIM</td><td style="border:1px solid #2a3a52;padding:0.4rem"><code>POST /api/v1/execution/orders</code> · <code>POST /api/v1/catalog/delta</code></td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Finance</td><td>ERP (SAP)</td><td style="border:1px solid #2a3a52;padding:0.4rem">Pledge + close inside <code>execution/order-pipeline.ts</code></td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Plan</td><td>WMS (Manhattan)</td><td style="border:1px solid #2a3a52;padding:0.4rem"><code>/api/v1/warehouse-tasks/wave/release</code> · <code>/pick</code> · <code>/ship</code></td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Automate</td><td>WES</td><td style="border:1px solid #2a3a52;padding:0.4rem"><code>/auto-pick</code> · <code>/auto-pack</code> (Locus, Rapyuta, AutoStore…)</td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Move</td><td>WCS</td><td style="border:1px solid #2a3a52;padding:0.4rem"><code>/stage</code> · <code>/load/trailer</code> (conveyors / dock)</td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Ship</td><td>TMS (Blue Yonder)</td><td style="border:1px solid #2a3a52;padding:0.4rem">Freight rate in order pipeline · <code>TMS_RATED</code></td></tr>
+          <tr><td style="border:1px solid #2a3a52;padding:0.4rem">Reconcile</td><td>ERP + WMS</td><td style="border:1px solid #2a3a52;padding:0.4rem"><code>/api/v1/inventory/reconciliation/daily</code> · OS&amp;D adjustments</td></tr>
+        </tbody>
+      </table>
+      <p class="sub">All routes require <code>x-tenant-id</code> and <code>x-correlation-id</code> (multi-tenant smoke tests enforce this in CI).</p>
+    </section>
+    <section>
+      <h2>Global vs Edge</h2>
+      <p><strong>Global (cloud):</strong> OMS, PIM, ERP, WMS host, TMS — shared across tenants on one Manhattan estate.</p>
+      <p><strong>Edge (on-prem):</strong> WES + WCS + scanners — sub-second handshakes; site-specific vendor APIs.</p>
     </section>
     <section>
       <h2>Data stores</h2>
@@ -180,11 +196,17 @@ const PAGES: Record<string, () => string> = {
       <p><span class="tag">GCP</span> Transform to / from Nike in-house service protocols</p>
     </section>
     <section>
+      <h2>Pub/Sub (async integration)</h2>
+      <p><span class="tag">pim.catalog.delta</span> PIM → warehouses without blocking order APIs</p>
+      <p><span class="tag">order.execution.stage</span> ERP / WMS / TMS stage events for observability</p>
+      <p><span class="tag">inventory.adjustment.posted</span> OS&amp;D → finance audit trail</p>
+    </section>
+    <section>
       <h2>Order flow (reference)</h2>
-      <pre class="flow">PIM → GCP → MongoDB + API → pub/sub → warehouse nodes
-OMS → GCP → API → SAP → Manhattan → WES → TMS → SAP
-Floor → Edge API → warehouse-tasks → WES / WMS</pre>
-      <p class="sub">Full diagrams: <a href="https://github.com/bharat2476/Integration/blob/main/README.md">README.md</a></p>
+      <pre class="flow">OMS → GCP → POST /execution/orders → ERP pledge
+  → WMS wave → WES allocate → WCS stage/load → TMS rate → WMS ship → ERP close
+PIM → POST /catalog/delta → pub/sub → warehouse SKU cache</pre>
+      <p class="sub"><a href="/ui/guide">Non Tech Product Guide</a> · <a href="https://github.com/bharat2476/Integration/blob/main/README.md#tech-persona" target="_blank" rel="noopener">README Tech Persona</a></p>
     </section>
     `,
     ),

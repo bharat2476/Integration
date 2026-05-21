@@ -1,6 +1,6 @@
 # Omni-Channel End to End Integration
 
-**Omni-Channel End to End Integration** (OmniRoute-Core in code) is a production-ready architectural blueprint for a decoupled, multi-tenant supply chain abstraction layer. It connects **OMS**, **PIM**, **SAP ERP**, **Manhattan WMS**, **WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta), and **Blue Yonder TMS** — so a **customer order** moves from checkout to on-time delivery without tight coupling between domain systems.
+**Omni-Channel End to End Integration** (OmniRoute-Core in code) is a production-ready architectural blueprint for a decoupled, multi-tenant supply chain abstraction layer. It connects **OMS**, **ERP (SAP)**, **WMS (Manhattan)**, **WES** (AutoStore, Vanderlande, Locus, Schaefer, Rapyuta), **WCS** (conveyors, sortation, staging), **TMS** (Blue Yonder), and **PIM** through **many orchestrated APIs** — so a **customer order** moves from checkout to on-time delivery without tight coupling between domain systems.
 
 Repository: [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration)
 
@@ -20,7 +20,22 @@ Pick the guide that matches how you work:
 ## Non Tech Persona
 
 > **OmniRoute-Core — explained simply**  
-> Think of this as the **coordination layer** between your selling website, finance system, warehouse, robots, and carriers. It is not a replacement for Manhattan or SAP — it is the **glue** that keeps them aligned so the customer gets the right product on time.
+> Fulfillment runs across **OMS, ERP, WMS, WES, WCS, and TMS** — each a complex system with its own APIs. OmniRoute-Core is the **integration layer** that chains those APIs so one customer order flows end-to-end without manual handoffs.
+
+### Complex systems — many APIs, one flow
+
+| System | Role | Why it is separate |
+|--------|------|-------------------|
+| **OMS** | Orders, channels, rush vs standard | Selling systems are not warehouse systems |
+| **ERP** (SAP) | Pledge, ledger, financial close | Money and inventory accounting |
+| **WMS** (Manhattan) | Waves, picks, locations, ship confirm | Inventory truth for the building |
+| **WES** | Robotics — AMRs, shuttles, GTP | Vendor-specific automation APIs |
+| **WCS** | Conveyors, sortation, staging, trailer load | Material handling between WMS tasks and the dock |
+| **TMS** (Blue Yonder) | Carriers, service level, freight | Transportation is its own domain |
+
+**PIM** feeds product data asynchronously so catalog updates do not block order APIs.
+
+The demo exposes this as **multiple REST endpoints** under `/api/v1/` (execution, warehouse-tasks, catalog, inventory), each tagged with `x-tenant-id` and `x-correlation-id`. See the in-app **[Product Guide](http://localhost:8080/ui/guide)** or **[Tech platform UI](http://localhost:8080/ui/platform)** for the API map.
 
 ### Live demo (start here)
 
@@ -46,7 +61,7 @@ npm run dev
 
 When a **customer places an order**, the platform’s job is the **end-to-end fulfillment journey**:
 
-1. Accept the order (B2B, D2C) from the selling channel by ensuring inventory exists and route it to closest warehouse to keep shipping costs low (OMS).
+1. Accept the order from the selling channel (OMS).
 2. Confirm finance can support the shipment (SAP).
 3. Release work to the warehouse (Manhattan WMS).
 4. Run floor and robot tasks at the building (Edge — on-prem).

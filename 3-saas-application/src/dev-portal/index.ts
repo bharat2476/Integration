@@ -17,7 +17,10 @@ export function mountDevPortal(app: Express): void {
       return;
     }
     const html = renderPage(page);
-    if (html) res.type("html").send(html);
+    if (html) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.type("html").send(html);
+    }
     else res.redirect("/");
   });
 }

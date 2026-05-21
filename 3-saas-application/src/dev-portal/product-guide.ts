@@ -21,18 +21,96 @@ export const GUIDE_EXTRA_STYLES = `
   .timeline th, .timeline td { border: 1px solid #2a3a52; padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
   .timeline th { background: #0a0e14; color: #7eb8ff; }
   .rush { color: #fbbf24; font-weight: 600; }
+  .persona-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0 1rem; }
+  .persona-pick a { display: block; padding: 0.85rem 1rem; border-radius: 8px; text-decoration: none; border: 1px solid #3d5270; background: #253045; color: #e7ecf3; }
+  .persona-pick a:hover { border-color: #7eb8ff; }
+  .persona-pick a.active { border-color: #2563eb; background: #1e3a5f; }
+  .persona-pick strong { color: #7eb8ff; display: block; margin-bottom: 0.25rem; }
+  .persona-pick span { font-size: 0.8rem; color: #8b9cb3; }
+  @media (max-width: 640px) { .persona-pick { grid-template-columns: 1fr; } }
+  .sys-role { font-size: 0.78rem; color: #8b9cb3; display: block; margin-top: 0.2rem; }
+  code.api { font-size: 0.75rem; color: #a5d4ff; }
 `;
 
 export function productGuideBody(): string {
   return `
+    <section>
+      <h2>Choose your view</h2>
+      <p class="sub" style="margin:0 0 0.5rem">Same product, two guides — pick the one that fits your role.</p>
+      <div class="persona-pick">
+        <a class="active" href="/ui/guide"><strong>Non Tech</strong><span>Business, ops, finance — you are here</span></a>
+        <a href="/ui/platform"><strong>Tech</strong><span>Architecture, APIs, data plane, CI/CD</span></a>
+      </div>
+      <p class="sub" style="margin:0">Full Tech write-up: <a href="https://github.com/bharat2476/Integration/blob/main/README.md#tech-persona" target="_blank" rel="noopener">README Tech Persona</a></p>
+    </section>
+
     <div class="callout">
-      <strong>OmniRoute-Core — explained simply</strong>
+      <strong>Omni-Channel End to End Integration — explained simply</strong>
       <p style="margin:0.5rem 0 0;color:#b8c5d9;font-size:0.9rem">
-        Think of this as a <strong>translation and coordination layer</strong> between your selling systems,
-        warehouses, finance, and carriers. It is not a replacement for Manhattan, SAP, or your robots —
-        it is the <strong>glue</strong> that keeps them speaking the same language without blocking each other during busy seasons.
+        Fulfillment spans <strong>OMS, ERP, WMS, WES, WCS, and TMS</strong> — each with its own APIs and owners.
+        <strong>OmniRoute-Core</strong> orchestrates <strong>many API calls</strong> so they stay in sync: one order,
+        one correlation ID, no re-keying between systems (rush ~24h vs standard ~5 days in this demo).
       </p>
     </div>
+
+    <section>
+      <h2>Complex systems — why integration is the product</h2>
+      <p>
+        A single “ship this order” action touches software that was never built as one app.
+        Without an integration layer, teams bridge gaps manually. This demo shows how
+        <strong>multiple REST APIs</strong> chain together so everything clicks.
+      </p>
+      <table class="timeline">
+        <thead>
+          <tr><th>System</th><th>What it owns</th><th>Examples in this demo</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>OMS</strong><br/><span class="sys-role">Order Management System</span></td>
+            <td>Customer orders, channels, rush vs standard</td>
+            <td><a href="/ui/orders">Order execution</a> → <code class="api">POST /api/v1/execution/orders</code></td>
+          </tr>
+          <tr>
+            <td><strong>ERP</strong><br/><span class="sys-role">Enterprise Resource Planning (SAP)</span></td>
+            <td>Financial pledge, inventory ledger, period close</td>
+            <td>Stages <code class="api">ERP_PLEDGED</code> → <code class="api">ERP_CLOSED</code> in order pipeline</td>
+          </tr>
+          <tr>
+            <td><strong>WMS</strong><br/><span class="sys-role">Warehouse Management (Manhattan)</span></td>
+            <td>Waves, pick lists, locations, ship confirm</td>
+            <td><code class="api">…/warehouse-tasks/wave/release</code> · <code class="api">/pick</code> · <code class="api">/ship</code></td>
+          </tr>
+          <tr>
+            <td><strong>WES</strong><br/><span class="sys-role">Warehouse Execution System</span></td>
+            <td>Robotics — AMRs, shuttles, goods-to-person</td>
+            <td><code class="api">…/auto-pick</code> · <code class="api">/auto-pack</code> (Locus, Rapyuta, AutoStore…)</td>
+          </tr>
+          <tr>
+            <td><strong>WCS</strong><br/><span class="sys-role">Warehouse Control System</span></td>
+            <td>Conveyors, sortation, staging, trailer load</td>
+            <td><code class="api">…/stage</code> · <code class="api">/load/trailer</code></td>
+          </tr>
+          <tr>
+            <td><strong>TMS</strong><br/><span class="sys-role">Transportation Management (Blue Yonder)</span></td>
+            <td>Carrier, service level, freight cost</td>
+            <td><code class="api">TMS_RATED</code> in order pipeline</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>PIM</strong> (product data): <code class="api">POST /api/v1/catalog/delta</code> on <a href="/ui/catalog">PIM catalog</a> — async, does not block orders.</p>
+    </section>
+
+    <section>
+      <h2>How the APIs connect (one order)</h2>
+      <pre class="flow">OMS  → POST /api/v1/execution/orders
+ERP  → pledge + close (inside execution pipeline)
+WMS  → wave/release · pick · pack/verify · ship
+WES  → auto-pick · auto-pack
+WCS  → stage · load/trailer
+TMS  → rate freight (rush = expedited)
+Inventory → cycle-count · reconciliation · OS&amp;D</pre>
+      <p>Walk the chain: <a href="/ui/orders">Orders</a> → <a href="/ui/warehouse">Warehouse</a> → <a href="/ui/inventory">Inventory</a>.</p>
+    </section>
 
     <section>
       <h2>Main objective — from customer order to on-time delivery</h2>
@@ -67,15 +145,16 @@ export function productGuideBody(): string {
 
     <section>
       <h2>End-to-end flow — what happens after the customer checks out</h2>
-      <pre class="flow">① Customer places order (website / store → OMS)
-② GCP translates to Nike in-house protocols + stores JSON (MongoDB) + facts (SQL)
-③ Global: SAP financial pledge — "we can afford to ship this"
-④ Global: Manhattan WMS — wave released (RUSH queue vs STANDARD queue)
-⑤ Edge (on-prem): pick · pack · robots · label — milliseconds matter here
-⑥ Global: Blue Yonder TMS — carrier + service level (express vs ground)
-⑦ Edge: ship confirm — carton leaves the building
-⑧ Global: SAP close — revenue & inventory books align
-⑨ Customer tracking + ops dashboards — Splunk latency per tenant</pre>
+      <pre class="flow">① OMS — customer order captured (channel + rush/standard)
+② GCP — protocol translation + persistence (MongoDB JSON + SQL facts)
+③ ERP — financial pledge before pick starts
+④ WMS — Manhattan wave (RUSH vs STANDARD queue)
+⑤ WES — robotics missions (vendor-specific APIs)
+⑥ WCS — staging lanes, sortation, trailer load
+⑦ TMS — carrier rate & service level
+⑧ WMS/Edge — ship confirm + label (ZPL/PDF)
+⑨ ERP — financial close + inventory ledger
+⑩ Dashboards — same correlation ID in every system's log</pre>
 
       <table class="timeline">
         <thead>
@@ -84,18 +163,19 @@ export function productGuideBody(): string {
         <tbody>
           <tr><td>1</td><td>OMS</td><td>Order confirmation email</td><td>Captures rush vs standard shipping choice</td></tr>
           <tr><td>2</td><td>GCP + Nike services</td><td>—</td><td>Protocol translation; no manual re-entry between brands</td></tr>
-          <tr><td>3</td><td>SAP</td><td>—</td><td>Credit / allocation pledge before pick starts</td></tr>
-          <tr><td>4</td><td>Manhattan WMS</td><td>—</td><td>Priority waves; urgent orders skip ahead of backlog</td></tr>
-          <tr><td>5</td><td>WES (Edge)</td><td>—</td><td>AutoStore, Locus, Rapyuta, etc. per building</td></tr>
-          <tr><td>6</td><td>Blue Yonder TMS</td><td>Tracking number</td><td>Express vs ground tied to urgency</td></tr>
-          <tr><td>7</td><td>Edge ship</td><td>"Shipped" notification</td><td>Label (ZPL/PDF) + trailer load</td></tr>
-          <tr><td>8</td><td>SAP close</td><td>—</td><td>Financial loop complete; audit trail for Finance</td></tr>
+          <tr><td>3</td><td>ERP (SAP)</td><td>—</td><td>Credit / allocation pledge before pick starts</td></tr>
+          <tr><td>4</td><td>WMS</td><td>—</td><td>Priority waves; urgent orders skip ahead of backlog</td></tr>
+          <tr><td>5</td><td>WES</td><td>—</td><td>Robot missions — AutoStore, Locus, Rapyuta, etc.</td></tr>
+          <tr><td>6</td><td>WCS</td><td>—</td><td>Staging lanes, sortation, trailer load to dock</td></tr>
+          <tr><td>7</td><td>TMS</td><td>Tracking number</td><td>Express vs ground tied to urgency</td></tr>
+          <tr><td>8</td><td>WMS + Edge</td><td>"Shipped" notification</td><td>Label (ZPL/PDF) + ship confirm</td></tr>
+          <tr><td>9</td><td>ERP close</td><td>—</td><td>Financial loop complete; audit trail for Finance</td></tr>
         </tbody>
       </table>
       <p>
-        <strong>Why so many systems?</strong> Each owns one job well — money (SAP), physical inventory (WMS),
-        robots (WES), trucks (TMS). OmniRoute-Core orchestrates them so a delay in one step is visible immediately
-        (same <strong>correlation ID</strong> in every log) and rush orders do not wait behind a slow standard wave.
+        <strong>Why so many systems?</strong> OMS sells, ERP funds, WMS plans work, WES moves robots, WCS moves cartons,
+        TMS books trucks — each speaks different APIs. OmniRoute-Core chains those calls so a delay in any layer is visible
+        immediately (same <strong>correlation ID</strong>) and rush orders do not wait behind a slow standard wave.
       </p>
     </section>
 
@@ -148,9 +228,10 @@ export function productGuideBody(): string {
         <div>
           <p><span class="tag">Edge</span> <strong>On-prem — one warehouse at a time</strong></p>
           <ul class="plain">
-            <li>Release waves, pick, pack, stage, ship</li>
-            <li>Robotics (Locus, Rapyuta, AutoStore, etc.)</li>
-            <li>Shipping labels at the pack station</li>
+            <li>WMS: release waves, pick, pack, ship</li>
+            <li>WES: robotics (Locus, Rapyuta, AutoStore, etc.)</li>
+            <li>WCS: staging lanes, trailer load, sortation</li>
+            <li>Labels at the pack station (ZPL/PDF)</li>
             <li>Stays local for <strong>low latency</strong> and tight SLOs</li>
           </ul>
         </div>
@@ -181,9 +262,9 @@ export function productGuideBody(): string {
       <p class="sub" style="margin-top:0">Use the links below to open each area of the local demo. Start with <strong>Product Guide</strong> (this page), then try one workflow.</p>
 
       <a class="ui-card" href="/ui/guide"><strong>Product Guide</strong><p>Plain-language overview — you are here.</p></a>
-      <a class="ui-card" href="/ui/orders"><strong>Order execution</strong><p>Run a sample order from OMS through SAP, warehouse, robotics, shipping, and financial close.</p></a>
+      <a class="ui-card" href="/ui/orders"><strong>Order execution</strong><p>OMS + ERP + WMS + WES + TMS APIs in one pipeline — rush vs standard.</p></a>
       <a class="ui-card" href="/ui/catalog"><strong>PIM catalog</strong><p>Send a product update that fans out to warehouses without stopping orders.</p></a>
-      <a class="ui-card" href="/ui/warehouse"><strong>Warehouse tasks</strong><p>Floor and automation actions: waves, picks, AMRs, labels, ship confirm.</p></a>
+      <a class="ui-card" href="/ui/warehouse"><strong>Warehouse tasks</strong><p>WMS, WES, and WCS APIs — waves, AMRs, staging, labels, ship.</p></a>
       <a class="ui-card" href="/ui/inventory"><strong>Inventory &amp; OS&amp;D</strong><p>Cycle counts, daily reconciliation, overage/shortage/damage with audit trail.</p></a>
       <a class="ui-card" href="/ui/platform"><strong>Global / Edge / Data</strong><p>How cloud, on-prem, SQL, MongoDB, and GCP fit together.</p></a>
       <a class="ui-card" href="/"><strong>Overview (technical console)</strong><p>Quick API buttons for engineers — same tenant header as other pages.</p></a>
@@ -293,7 +374,8 @@ export function productGuideBody(): string {
         <li><a href="/ui/warehouse">Warehouse</a> — print a sample label</li>
         <li><a href="/ui/inventory">Inventory</a> — view audit ledger</li>
       </ol>
-      <p class="sub">Technical README and diagrams: <a href="https://github.com/bharat2476/Integration/blob/main/README.md" target="_blank" rel="noopener">GitHub Integration repo</a></p>
+      <p class="sub">README: <a href="https://github.com/bharat2476/Integration/blob/main/README.md#non-tech-persona" target="_blank" rel="noopener">Non Tech</a> ·
+        <a href="https://github.com/bharat2476/Integration/blob/main/README.md#tech-persona" target="_blank" rel="noopener">Tech</a> personas on GitHub</p>
     </section>
   `;
 }

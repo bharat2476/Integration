@@ -1,3 +1,7 @@
+/** Display name (README: Omni-Channel End to End Integration). */
+export const PRODUCT_NAME = "Omni-Channel End to End Integration";
+export const PRODUCT_CODE_NAME = "OmniRoute-Core";
+
 export const STYLES = `
   :root { font-family: system-ui, Segoe UI, sans-serif; background: #0f1419; color: #e7ecf3; }
   * { box-sizing: border-box; }
@@ -52,12 +56,12 @@ export function renderShell(activeId: string, title: string, subtitle: string, b
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} — OmniRoute-Core</title>
+  <title>${title} — ${PRODUCT_CODE_NAME}</title>
   <style>${STYLES}</style>
 </head>
 <body>
   <nav>
-    <div class="brand">OmniRoute-Core<span>Local dev · :8080</span></div>
+    <div class="brand">${PRODUCT_NAME}<span>${PRODUCT_CODE_NAME} · local :8080</span></div>
     ${nav}
   </nav>
   <main>
@@ -130,12 +134,12 @@ export function renderGuideShell(activeId: string, title: string, subtitle: stri
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} — OmniRoute-Core</title>
+  <title>${title} — ${PRODUCT_CODE_NAME}</title>
   <style>${STYLES}${extraStyles}</style>
 </head>
 <body>
   <nav>
-    <div class="brand">OmniRoute-Core<span>Local dev · :8080</span></div>
+    <div class="brand">${PRODUCT_NAME}<span>${PRODUCT_CODE_NAME} · local :8080</span></div>
     ${nav}
   </nav>
   <main>
