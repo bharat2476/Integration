@@ -1,12 +1,6 @@
-# Product brief — Director of Product Management interview
 
-**Candidate artifact:** Omni-Channel End to End Integration (OmniRoute-Core)  
-**Repo:** [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration)  
-**Live demo:** [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) (`npm run dev` in `3-saas-application`)
 
----
-
-## 30-second pitch
+##
 
 I led the product vision for a **multi-warehouse integration platform** that connects OMS, ERP, WMS, WES, WCS, and TMS through orchestrated APIs—so customer orders ship on time without manual handoffs. We built **IaaS + SaaS once**, deployed with **Docker via Jenkins**, and scale VMs on **peak demand via Terraform**—not a custom integration per building.
 
@@ -75,9 +69,8 @@ Many warehouses ──► Shared SaaS API (Docker) ◄── Jenkins / GHA
 
 ---
 
-## 7-minute demo script (use in interview)
+## Demo
 
-| Min | Do | Say |
 |-----|-----|-----|
 | 0–1 | Open `/ui/guide` | “Six systems, one flow—integration is the product.” |
 | 1–2 | `/ui/orders` — **rush** order | “ERP pledge, then TMS load ID, then WMS wave—note `tmsLoadId` in JSON.” |
@@ -89,37 +82,7 @@ Many warehouses ──► Shared SaaS API (Docker) ◄── Jenkins / GHA
 
 ---
 
-## STAR stories (prepare these)
-
-**Situation — Peak volume**  
-Black Friday–class catalog + order spikes threatened to block picking.
-
-**Task**  
-Keep integrations reliable without per-warehouse infra projects.
-
-**Action**  
-Platform approach: shared SaaS, async PIM pub/sub, Terraform/Karpenter burst, per-tenant rate limits, rush priority in the order API.
-
-**Result**  
-One codebase serves all DCs; engineers tune variables instead of provisioning ad-hoc servers; demo shows backlog-driven scale story.
-
----
-
-**Situation — Wrong trailer / staging chaos**  
-Orders reached pick before transportation planned the load.
-
-**Task**  
-Guarantee dock correctness under rush and standard mix.
-
-**Action**  
-Product rule: **TMS load assignment is a gate before WMS wave**; API returns `stagingLane`, `trailerId`; WCS endpoints consume them.
-
-**Result**  
-Traceable correlation ID across TMS → WMS → WCS; fewer mis-staged cartons (narrative for interview—tie to your real metrics if you have them).
-
----
-
-## How I’d measure success as Director
+## How I’d measured success
 
 | Metric | Why |
 |--------|-----|
@@ -129,16 +92,6 @@ Traceable correlation ID across TMS → WMS → WCS; fewer mis-staged cartons (n
 | Cost per million orders (shared infra) | Business case |
 | % changes via CI without Sev-1 | Delivery discipline |
 | OS&D audit cycle time | Finance trust |
-
----
-
-## Roadmap I’d pitch next (shows strategic thinking)
-
-1. Replace in-process pub/sub with managed bus (Kafka / GCP Pub/Sub).  
-2. Self-service tenant onboarding + API portal for partners.  
-3. Real-time SLA dashboard per DC and vendor (WES error rate).  
-4. Load-building optimization in TMS (multi-order trailers).  
-5. Chaos testing for regional failover while Edge runs autonomously.
 
 ---
 
