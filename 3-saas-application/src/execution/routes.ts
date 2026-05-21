@@ -48,5 +48,9 @@ executionRouter.get("/orders/:orderId", (req, res) => {
     promisedShipBy: record.ctx.promisedShipBy,
     slaTargetHours: record.sla.slaTargetHours,
     waveTier: record.sla.waveTier,
+    tmsLoadId: record.ctx.tmsLoadId,
+    stagingLane: record.ctx.stagingLane,
+    trailerId: record.ctx.trailerId,
+    doorId: record.ctx.doorId,
   });
 });

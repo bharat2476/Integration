@@ -119,7 +119,7 @@ const PAGES: Record<string, () => string> = {
         <li><strong>IaaS</strong> — Terraform VMs; Karpenter burst on peak</li>
         <li><strong>CI/CD</strong> — Jenkins + GitHub Actions → same image everywhere</li>
       </ul>
-      <p class="sub"><a href="https://github.com/bharat2476/Integration/blob/main/PRODUCT_BRIEF.md" target="_blank" rel="noopener">PRODUCT_BRIEF.md</a> · <a href="https://github.com/bharat2476/Integration/blob/main/docs/TECH.md" target="_blank" rel="noopener">docs/TECH.md</a></p>
+      <p class="sub"><a href="https://github.com/bharat2476/Integration/blob/main/README.md" target="_blank" rel="noopener">README.md</a> · <a href="https://github.com/bharat2476/Integration/blob/main/docs/TECH.md" target="_blank" rel="noopener">docs/TECH.md</a></p>
     </section>
     <section>
       <h2>Order sequence</h2>

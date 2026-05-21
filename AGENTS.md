@@ -1,6 +1,6 @@
 # AGENTS.md
 
-**Product / interview:** [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md) · [README.md](README.md)  
+**Product / interview:** [README.md](README.md)  
 **Engineering:** [docs/TECH.md](docs/TECH.md)
 
 ## Run

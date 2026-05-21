@@ -1,6 +1,6 @@
 # Technical appendix — OmniRoute-Core
 
-Concise engineering reference. Product narrative: [PRODUCT_BRIEF.md](../PRODUCT_BRIEF.md) · [README.md](../README.md).
+Concise engineering reference. Product narrative: [README.md](../README.md).
 
 ## Repo layout
 

@@ -1,13 +1,12 @@
 # Omni-Channel End to End Integration
 
-**Portfolio** — multi-warehouse supply chain integration platform.
+**OmniRoute-Core** — multi-warehouse supply chain integration platform (portfolio / Director PM interview).
 
 | | |
 |--|--|
-| **Product Brief** | **[PRODUCT_BRIEF.md](PRODUCT_BRIEF.md)** — pitch, demo script, STAR stories, metrics |
-| **Demo** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
 | **Repo** | [github.com/bharat2476/Integration](https://github.com/bharat2476/Integration) |
-| **Engineering detail** | [docs/TECH.md](docs/TECH.md) |
+| **Live demo** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
+| **Engineering** | [docs/TECH.md](docs/TECH.md) |
 
 ```powershell
 cd 3-saas-application; npm install; npm run dev
@@ -15,93 +14,132 @@ cd 3-saas-application; npm install; npm run dev
 
 ---
 
-## Product
+## 30-second pitch
 
-Customer orders touch **OMS, ERP, WMS, WES, WCS, and TMS**—each a complex system with its own APIs. Product is the **orchestration layer** that chains those APIs so fulfillment runs end-to-end without manual re-entry. We built **IaaS + SaaS as a shared platform** for every warehouse, ship with **Docker via Jenkins**, and add **Terraform-managed VMs** on peak demand—not a one-off integration per building.
+**One orchestration layer, many warehouses.** OMS, ERP, WMS, WES, WCS, and TMS each have their own APIs—we chain them so orders ship on time without manual handoffs. **IaaS + SaaS built once**, delivered with **Docker (Jenkins)**, scaled on peak via **Terraform**—not a custom integration per building.
 
----
-
-## Why this matters
-
-| Problem | Product answer |
-|---------|----------------|
-| Systems don’t talk | One flow, one correlation ID across partners |
-| Rush orders miss SLA | Priority score, RUSH waves, expedited TMS |
-| Wrong dock / trailer | **TMS load ID before WMS releases pick** |
-| Peak breaks ops | Shared platform + burst capacity (Terraform/Karpenter) |
-| New site = new project | Same APIs; Edge config only for local WES/WCS |
+**Product rules:** (1) **TMS load ID before WMS pick** — staging lane + trailer before pick release. (2) **Rush vs standard** — SLA, wave tier, freight class.
 
 ---
 
-## Order Flow
+## Problem → product answer
+
+| Pain | Answer |
+|------|--------|
+| Six systems, six API estates | One flow, one `correlationId` |
+| Rush orders miss SLA | `priorityScore`, RUSH waves, expedited TMS |
+| Wrong dock / trailer | TMS load → WCS stage → correct trailer |
+| Peak weeks | Shared platform + Terraform/Karpenter burst |
+| New DC = new project | Same APIs; Edge config for local WES/WCS only |
+
+---
+
+## Systems integrated
+
+| System | Role | When |
+|--------|------|------|
+| **OMS** | Orders, rush vs standard | Ingest |
+| **ERP** | Pledge, ledger, close | Start / end |
+| **TMS** | **Load ID**, lane, trailer; then freight | **Before WMS**; rate at ship |
+| **WMS** | Waves, pick, ship | After load |
+| **WES** | Robotics (Locus, AutoStore, …) | Per site |
+| **WCS** | Staging, conveyors, trailer load | Uses TMS lane |
+| **PIM** | Catalog | Async — never blocks orders |
+
+---
+
+## Order flow
 
 ```mermaid
 flowchart LR
   OMS[OMS] --> ERP[ERP pledge]
   ERP --> TMS1[TMS loadId]
   TMS1 --> WMS[WMS wave]
-  WMS --> WES[WES robots]
+  WMS --> WES[WES]
   WES --> WCS[WCS stage]
   WCS --> TMS2[TMS rate]
   TMS2 --> SHIP[Ship + ERP close]
 ```
 
-| Step | System | Customer-visible |
-|------|--------|------------------|
-| 1 | OMS | Order confirmation |
-| 2 | ERP | — |
-| 3 | **TMS** | — (load + lane + trailer assigned) |
-| 4 | WMS | — |
-| 5 | WES / WCS | — |
-| 6 | TMS | Tracking |
-| 7 | WMS + ERP | Shipped |
-
-**Rush** ~24h ship target · **Standard** ~5 days — different wave tier and freight.
+**Rush** ~24h · **Standard** ~5d — different `waveTier`, carrier, and `priorityScore`. API: `POST /api/v1/execution/orders` → returns `tmsLoadId`, `stagingLane`, `trailerId`, `doorId`.
 
 ---
 
-## Platform strategy
+## Platform (all warehouses)
 
-| Layer | Shared across warehouses | Per site |
-|-------|--------------------------|----------|
-| **SaaS** | Order, catalog, inventory APIs; one **Docker** image | Edge floor endpoints |
-| **PaaS** | Helm, gateway, observability | Values / profile |
-| **IaaS** | Terraform, EKS, **peak VM burst** | Region |
+```
+Many DCs → Shared SaaS API (Docker) ← Jenkins / GitHub Actions
+              Global: OMS · ERP · TMS · WMS
+              Edge: WES · WCS (on-prem)
+              Terraform + Karpenter (peak VMs)
+```
 
-**Global (cloud):** OMS, ERP, TMS, WMS orchestration for the shared estate.  
-**Edge (on-prem):** WES + WCS for speed and vendor choice.
-
-**Delivery:** Jenkins + GitHub Actions → Docker image → canary → all sites.  
-**Peak:** Terraform baseline nodes + Karpenter burst + API autoscale.
-
----
-
-## Demo
-
-1. [Product Guide](http://localhost:8080/ui/guide) — narrative  
-2. [Orders](http://localhost:8080/ui/orders) — rush vs standard; show `tmsLoadId`  
-3. [Warehouse](http://localhost:8080/ui/warehouse) — floor + robotics  
-4. [Inventory](http://localhost:8080/ui/inventory) — reconciliation / OS&D  
-5. [Platform](http://localhost:8080/ui/platform) — multi-DC platform view  
+| Layer | Shared | Per site |
+|-------|--------|----------|
+| **SaaS** | Order, catalog, inventory APIs; one Docker image | Edge floor APIs |
+| **PaaS** | Helm, gateway, Splunk | Helm values |
+| **IaaS** | Terraform, EKS, burst nodes | Region |
 
 ---
 
 ## Outcomes
 
-- SLA hit rate (rush vs standard)  
-- Integration reliability by stage  
-- Time to onboard a new DC  
-- Infra cost per order at peak  
-- Audit quality (OS&D, WMS vs ERP)  
+| Outcome | Mechanism |
+|---------|-----------|
+| On-time delivery | SLA + rush priority |
+| Dock accuracy | TMS load → WCS |
+| Peak readiness | Terraform + Karpenter + HPA |
+| Cost | One platform, many DCs |
+| Safe releases | Jenkins/GHA + tenant smoke + canary |
+| Audit | OS&D codes; WMS vs ERP reconciliation |
+
+**Director metrics:** SLA hit rate · failures by stage · time to onboard a DC · cost per million orders · OS&D cycle time.
 
 ---
 
-## For engineers
+## 7-minute demo
 
-| Topic | Link |
-|-------|------|
-| APIs, pipeline states, CI/CD | [docs/TECH.md](docs/TECH.md) |
-| `AGENTS.md` | Agent / operator quick reference |
+| Min | Screen | Say |
+|-----|--------|-----|
+| 0–1 | [/ui/guide](http://localhost:8080/ui/guide) | Six systems, one flow |
+| 1–2 | [/ui/orders](http://localhost:8080/ui/orders) — **rush** | TMS `tmsLoadId` before WMS in JSON |
+| 2–3 | Orders — **standard** | Lower priority, STANDARD wave |
+| 3–4 | [/ui/warehouse](http://localhost:8080/ui/warehouse) | WMS / WES / WCS |
+| 4–5 | [/ui/inventory](http://localhost:8080/ui/inventory) | WMS vs ERP reconciliation |
+| 5–6 | [/ui/platform](http://localhost:8080/ui/platform) | Multi-DC platform, Jenkins, Terraform |
+
+---
+
+## STAR (interview prep)
+
+**Peak volume** — Catalog/order spikes threatened picking. **Action:** Shared SaaS, async PIM, Terraform burst, rush API, tenant rate limits. **Result:** One codebase for all DCs; scale via config not ad-hoc servers.
+
+**Wrong trailer** — Pick released before load planned. **Action:** Gate WMS on TMS load; expose `stagingLane` / `trailerId` to WCS. **Result:** Traceable TMS → WMS → WCS path; fewer mis-staged cartons.
+
+---
+
+## Roadmap (next bets)
+
+1. Managed event bus (Kafka / GCP Pub/Sub)  
+2. Partner API portal + tenant self-service  
+3. SLA dashboard per DC and WES vendor  
+4. TMS multi-order load building  
+5. Regional failover with autonomous Edge  
+
+---
+
+## Questions for the hiring manager
+
+- Integration funding vs net-new channel features?  
+- Rush D2C SLA baseline today?  
+- Shared WMS estate vs isolated per DC?  
+- Product vs platform engineering boundaries?
+
+---
+
+## Engineers
+
+APIs, pipeline states, CI/CD: **[docs/TECH.md](docs/TECH.md)** · Operator notes: **[AGENTS.md](AGENTS.md)**
 
 ---
 

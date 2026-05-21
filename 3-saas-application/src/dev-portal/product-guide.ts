@@ -32,7 +32,7 @@ export function productGuideBody(): string {
         <li><a href="/ui/inventory">Inventory</a> — ERP alignment</li>
         <li><a href="/ui/platform">Platform</a> — multi-DC, Jenkins, Terraform peak</li>
       </ol>
-      <p class="sub">Full brief: <a href="https://github.com/bharat2476/Integration/blob/main/PRODUCT_BRIEF.md" target="_blank" rel="noopener">PRODUCT_BRIEF.md</a></p>
+      <p class="sub">Full story: <a href="https://github.com/bharat2476/Integration/blob/main/README.md" target="_blank" rel="noopener">README.md</a></p>
     </section>
 
     <section>
