@@ -1,6 +1,6 @@
 # Omni-Channel End to End Integration
 
-**** — Multi-warehouse supply chain integration platform (portfolio / Director PM interview).
+Multi-warehouse supply chain integration platform (portfolio / Director PM interview).
 
 | | |
 |--|--|
