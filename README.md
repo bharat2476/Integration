@@ -1,6 +1,6 @@
 # Omni-Channel End to End Integration
 
-**OmniRoute-Core** — multi-warehouse supply chain integration platform (portfolio / Director PM interview).
+**** — Multi-warehouse supply chain integration platform (portfolio / Director PM interview).
 
 | | |
 |--|--|
@@ -13,8 +13,6 @@ cd 3-saas-application; npm install; npm run dev
 ```
 
 ---
-
-## 30-second pitch
 
 **One orchestration layer, many warehouses.** OMS, ERP, WMS, WES, WCS, and TMS each have their own APIs—we chain them so orders ship on time without manual handoffs. **IaaS + SaaS built once**, delivered with **Docker (Jenkins)**, scaled on peak via **Terraform**—not a custom integration per building.
 
@@ -93,11 +91,11 @@ Many DCs → Shared SaaS API (Docker) ← Jenkins / GitHub Actions
 | Safe releases | Jenkins/GHA + tenant smoke + canary |
 | Audit | OS&D codes; WMS vs ERP reconciliation |
 
-**Director metrics:** SLA hit rate · failures by stage · time to onboard a DC · cost per million orders · OS&D cycle time.
+**Metrics:** SLA hit rate · failures by stage · time to onboard a DC · cost per million orders · OS&D cycle time.
 
 ---
 
-## 7-minute demo
+## Demo
 
 | Min | Screen | Say |
 |-----|--------|-----|
@@ -107,33 +105,6 @@ Many DCs → Shared SaaS API (Docker) ← Jenkins / GitHub Actions
 | 3–4 | [/ui/warehouse](http://localhost:8080/ui/warehouse) | WMS / WES / WCS |
 | 4–5 | [/ui/inventory](http://localhost:8080/ui/inventory) | WMS vs ERP reconciliation |
 | 5–6 | [/ui/platform](http://localhost:8080/ui/platform) | Multi-DC platform, Jenkins, Terraform |
-
----
-
-## STAR (interview prep)
-
-**Peak volume** — Catalog/order spikes threatened picking. **Action:** Shared SaaS, async PIM, Terraform burst, rush API, tenant rate limits. **Result:** One codebase for all DCs; scale via config not ad-hoc servers.
-
-**Wrong trailer** — Pick released before load planned. **Action:** Gate WMS on TMS load; expose `stagingLane` / `trailerId` to WCS. **Result:** Traceable TMS → WMS → WCS path; fewer mis-staged cartons.
-
----
-
-## Roadmap (next bets)
-
-1. Managed event bus (Kafka / GCP Pub/Sub)  
-2. Partner API portal + tenant self-service  
-3. SLA dashboard per DC and WES vendor  
-4. TMS multi-order load building  
-5. Regional failover with autonomous Edge  
-
----
-
-## Questions for the hiring manager
-
-- Integration funding vs net-new channel features?  
-- Rush D2C SLA baseline today?  
-- Shared WMS estate vs isolated per DC?  
-- Product vs platform engineering boundaries?
 
 ---
 
