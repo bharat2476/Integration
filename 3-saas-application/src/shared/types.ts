@@ -7,6 +7,7 @@ export type OrderLifecycleState =
   | "RECEIVED_OMS"
   | "ERP_PLEDGE_PENDING"
   | "ERP_PLEDGED"
+  | "TMS_LOAD_ASSIGNED"
   | "WMS_WAVE_RELEASED"
   | "WES_ALLOCATED"
   | "TMS_RATED"
@@ -28,6 +29,19 @@ export interface OrderExecutionContext extends TenantContext {
   shipUrgency: ShipUrgency;
   priorityScore: number;
   promisedShipBy: string;
+  /** Assigned by TMS before WMS wave — ties order to staging lane and trailer. */
+  tmsLoadId?: string;
+  stagingLane?: string;
+  trailerId?: string;
+  doorId?: string;
+}
+
+export interface TmsLoadReservation {
+  loadId: string;
+  stagingLane: string;
+  trailerId: string;
+  doorId: string;
+  serviceLevel: "EXPEDITED" | "GROUND";
 }
 
 export type OsdAdjustmentType = "overage" | "shortage" | "damage";

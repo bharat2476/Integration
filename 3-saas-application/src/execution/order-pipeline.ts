@@ -10,6 +10,7 @@ import {
   pledgeSapFinancial,
   rateBlueYonderFreight,
   releaseManhattanWave,
+  reserveTmsLoadForOrder,
 } from "./integrations.js";
 import { resolveOrderSla, waveQueueRank, type OrderSlaProfile } from "./priority.js";
 
@@ -22,6 +23,11 @@ export interface OrderPipelineResult {
   promisedShipBy: string;
   waveTier: OrderSlaProfile["waveTier"];
   correlationId: string;
+  /** TMS load reserved before WMS wave — required for staging lane and trailer assignment. */
+  tmsLoadId: string;
+  stagingLane: string;
+  trailerId: string;
+  doorId: string;
 }
 
 const orderStore = new Map<
@@ -77,6 +83,21 @@ export async function runOrderExecutionPipeline(
       priorityScore: sla.priorityScore,
     });
 
+    const tmsLoad = await reserveTmsLoadForOrder(ctx, sla.carrierServiceLevel);
+    ctx.tmsLoadId = tmsLoad.loadId;
+    ctx.stagingLane = tmsLoad.stagingLane;
+    ctx.trailerId = tmsLoad.trailerId;
+    ctx.doorId = tmsLoad.doorId;
+    orderStore.set(orderId, { ctx, state: "TMS_LOAD_ASSIGNED", sla });
+    await globalBroker.publish("order.execution.stage", tenantId, correlationId, {
+      orderId,
+      stage: "TMS_LOAD_ASSIGNED",
+      tmsLoadId: tmsLoad.loadId,
+      stagingLane: tmsLoad.stagingLane,
+      trailerId: tmsLoad.trailerId,
+      doorId: tmsLoad.doorId,
+    });
+
     await releaseManhattanWave(ctx, sla.waveTier, waveQueueRank(sla.priorityScore));
     orderStore.set(orderId, { ctx, state: "WMS_WAVE_RELEASED", sla });
     await allocateWesRobotics(ctx);
@@ -105,6 +126,10 @@ export async function runOrderExecutionPipeline(
       promisedShipBy: sla.promisedShipBy,
       waveTier: sla.waveTier,
       correlationId,
+      tmsLoadId: ctx.tmsLoadId!,
+      stagingLane: ctx.stagingLane!,
+      trailerId: ctx.trailerId!,
+      doorId: ctx.doorId!,
     };
   } catch (err) {
     orderStore.set(orderId, { ctx, state: "FAILED", sla });
