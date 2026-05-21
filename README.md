@@ -8,10 +8,6 @@ Multi-warehouse supply chain integration platform (portfolio / Director PM inter
 | **Live demo** | [http://localhost:8080/ui/guide](http://localhost:8080/ui/guide) |
 | **Engineering** | [docs/TECH.md](docs/TECH.md) |
 
-```powershell
-cd 3-saas-application; npm install; npm run dev
-```
-
 ---
 
 **One orchestration layer, many warehouses.** OMS, ERP, WMS, WES, WCS, and TMS each have their own APIs—we chain them so orders ship on time without manual handoffs. **IaaS + SaaS built once**, delivered with **Docker (Jenkins)**, scaled on peak via **Terraform**—not a custom integration per building.
