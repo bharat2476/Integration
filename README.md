@@ -1,6 +1,6 @@
 # Omni-Channel End to End Integration
 
-**Portfolio piece for Director of Product Management** — multi-warehouse supply chain integration platform.
+**Portfolio** — multi-warehouse supply chain integration platform.
 
 | | |
 |--|--|
@@ -15,7 +15,7 @@ cd 3-saas-application; npm install; npm run dev
 
 ---
 
-## Product in one paragraph
+## Product
 
 Customer orders touch **OMS, ERP, WMS, WES, WCS, and TMS**—each a complex system with its own APIs. Product is the **orchestration layer** that chains those APIs so fulfillment runs end-to-end without manual re-entry. We built **IaaS + SaaS as a shared platform** for every warehouse, ship with **Docker via Jenkins**, and add **Terraform-managed VMs** on peak demand—not a one-off integration per building.
 
