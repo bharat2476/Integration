@@ -17,6 +17,10 @@ Concise engineering reference. Product narrative: [README.md](../README.md).
 - **SQL** — orders, inventory (not PostgreSQL in production design)  
 - **GCP** — Nike in-house protocol translation  
 
+## Diagrams
+
+Full **data flow** and **sequence** diagrams: [README.md § Data flow & sequence](../README.md#data-flow-diagram).
+
 ## Order pipeline states
 
 ```

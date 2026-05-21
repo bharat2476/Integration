@@ -42,20 +42,142 @@ Multi-warehouse supply chain integration platform (portfolio / Director PM inter
 
 ---
 
-## Order flow
+## Data flow diagram
+
+End-to-end movement of **orders**, **catalog**, and **inventory** through the shared platform (Global cloud + Edge warehouses). Every request carries `x-tenant-id` and `x-correlation-id`.
 
 ```mermaid
-flowchart LR
-  OMS[OMS] --> ERP[ERP pledge]
-  ERP --> TMS1[TMS loadId]
-  TMS1 --> WMS[WMS wave]
-  WMS --> WES[WES]
-  WES --> WCS[WCS stage]
-  WCS --> TMS2[TMS rate]
-  TMS2 --> SHIP[Ship + ERP close]
+flowchart TB
+  subgraph partners [Partner systems]
+    OMS[OMS]
+    PIM[PIM]
+    SAP[ERP / SAP]
+    MHT[WMS Manhattan]
+    WES_V[WES vendors]
+    TMS_B[TMS Blue Yonder]
+  end
+
+  subgraph gcp [GCP — protocol translation]
+    TR[GCP transforms]
+  end
+
+  subgraph global [Global — cloud platform]
+    GW[Istio gateway\nx-tenant-id rate limit]
+    API[OmniRoute SaaS API\nDocker / K8s]
+    PS[(Pub/Sub broker)]
+  end
+
+  subgraph data [Persistence]
+    SQL[(SQL — orders inventory)]
+    MONGO[(MongoDB — JSON events)]
+  end
+
+  subgraph edge [Edge — per warehouse on-prem]
+    WH_API[warehouse-tasks API]
+    WCS_F[WCS conveyors staging]
+    WES_F[WES robotics]
+  end
+
+  OMS & PIM --> TR
+  TR <--> SAP & MHT & TMS_B
+  TR --> API
+  OMS --> API
+  API --> GW
+  GW --> API
+  API --> PS
+  API --> SQL & MONGO
+
+  PIM -.->|POST /catalog/delta| API
+  PS -.->|pim.catalog.delta| MHT
+
+  API -->|execution pipeline| SAP & TMS_B & MHT
+  API <-->|order stages| PS
+
+  MHT <-->|wave pick ship| WH_API
+  WH_API --> WES_F & WCS_F
+  WES_V --- WES_F
+  TMS_B -.->|loadId lane trailer| WCS_F
+
+  subgraph cicd [Delivery and peak scale]
+    JEN[Jenkins / GHA]
+    DOC[Docker image]
+    TF[Terraform EKS VMs]
+    KARP[Karpenter burst]
+  end
+
+  JEN --> DOC --> API
+  TF --> KARP --> global
 ```
 
-**Rush** ~24h · **Standard** ~5d — different `waveTier`, carrier, and `priorityScore`. API: `POST /api/v1/execution/orders` → returns `tmsLoadId`, `stagingLane`, `trailerId`, `doorId`.
+| Flow | Path | Async? |
+|------|------|--------|
+| **Order** | OMS → GCP → API → ERP → **TMS load** → WMS → WES → TMS rate → ERP close | Sync pipeline + stage events on pub/sub |
+| **Catalog** | PIM → API → `pim.catalog.delta` → warehouse SKU cache | Yes — does not block orders |
+| **Floor** | API `warehouse-tasks` → WMS / WES / WCS (uses `tmsLoadId`, `stagingLane`) | Edge, low latency |
+| **Inventory** | Cycle count / reconciliation / OS&D → SQL + MongoDB audit | Finance alignment |
+
+---
+
+## Sequence diagram — customer order
+
+**Rule:** TMS assigns **load ID** (staging lane + trailer) **before** WMS releases pick. Rush vs standard changes SLA, wave tier, and freight class.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Customer
+  participant OMS as OMS
+  participant GCP as GCP
+  participant API as OmniRoute API
+  participant PS as Pub/Sub
+  participant SAP as ERP SAP
+  participant TMS as TMS
+  participant WMS as WMS
+  participant WES as WES
+  participant WCS as WCS
+  participant SQL as SQL DB
+  participant MG as MongoDB
+
+  Customer->>OMS: Place order rush or standard
+  OMS->>GCP: Order payload partner protocol
+  GCP->>API: POST /api/v1/execution/orders\nx-tenant-id x-correlation-id
+  API->>PS: publish RECEIVED_OMS
+  API->>SQL: Persist order facts
+  API->>MG: Persist event JSON
+
+  API->>SAP: pledgeSapFinancial
+  SAP-->>API: ERP_PLEDGED
+  API->>PS: publish ERP_PLEDGED
+
+  API->>TMS: reserveTmsLoadForOrder
+  Note over TMS,API: loadId stagingLane trailerId doorId
+  TMS-->>API: TMS_LOAD_ASSIGNED
+  API->>PS: publish TMS_LOAD_ASSIGNED
+
+  API->>WMS: releaseManhattanWave requires tmsLoadId
+  WMS-->>API: WMS_WAVE_RELEASED RUSH or STANDARD
+  API->>WES: allocateWesRobotics
+  WES-->>API: WES_ALLOCATED
+
+  API->>WMS: warehouse-tasks pick pack
+  API->>WES: auto-pick auto-pack
+  API->>WCS: stage to stagingLane
+  API->>WCS: load/trailer trailerId
+
+  API->>TMS: rateBlueYonderFreight
+  TMS-->>API: TMS_RATED carrier cost
+  API->>PS: publish TMS_RATED
+
+  API->>WMS: ship confirm
+  API->>SAP: closeSapOrderLoop
+  SAP-->>API: ERP_CLOSED
+  API-->>OMS: Shipment complete
+  Customer->>Customer: Tracking notification
+```
+
+**API response** (`POST /api/v1/execution/orders`): `tmsLoadId`, `stagingLane`, `trailerId`, `doorId`, `priorityScore`, `promisedShipBy`, `waveTier`.
+
+**Rush** ~24h · **Standard** ~5d.
 
 ---
 

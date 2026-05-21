@@ -36,6 +36,12 @@ export function productGuideBody(): string {
     </section>
 
     <section>
+      <h2>Diagrams</h2>
+      <p>Data flow (platform + partners + persistence) and order sequence (TMS load before WMS) are in
+        <a href="https://github.com/bharat2476/Integration/blob/main/README.md#data-flow-diagram" target="_blank" rel="noopener">README — Data flow &amp; sequence</a>.</p>
+    </section>
+
+    <section>
       <h2>Systems we integrate</h2>
       <table class="timeline">
         <thead><tr><th>System</th><th>Role</th></tr></thead>
